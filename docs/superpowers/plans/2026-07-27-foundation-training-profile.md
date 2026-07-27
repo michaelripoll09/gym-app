@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 0.1 seconds
-Output:
 # Foundation and Training Profile Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -146,11 +143,35 @@ assertThatThrownBy {
 - [ ] **Step 4: Implement the rules and return 422 with field errors; update OpenAPI.**
 - [ ] **Step 5: Rerun tests and commit `feat: add segmented training profiles`.**
 
-## Task 4: Implement exercises, manual routines, and session logs
+## Task 4: Import and curate the exercise catalogue
 
 **Files:**
-- Create: `backend/src/main/kotlin/com/gymapp/training/{Exercise,WorkoutPlan,WorkoutSession,TrainingController,TrainingService,TrainingDtos}.kt`
-- Create: `backend/src/main/resources/db/migration/V003__training.sql`, `V004__exercise_seed.sql`
+- Create: `backend/src/main/kotlin/com/gymapp/catalog/{ExerciseDatasetImporter,ExerciseDatasetRecord,ExerciseCatalogueService}.kt`
+- Create: `backend/src/main/resources/catalog/profile-mappings.yaml`, `backend/src/main/resources/catalog/source-manifest.yaml`
+- Create: `backend/src/main/resources/db/migration/V003__exercise_catalog.sql`
+- Test: `backend/src/test/kotlin/com/gymapp/catalog/ExerciseDatasetImporterTest.kt`
+
+**Interfaces:** `ExerciseDatasetImporter.import(sourceFile, schemaFile, manifest)` validates a pinned JSON file and writes only curated, published exercises. `GET /api/v1/exercises?profile=CALISTHENICS` returns only published exercises mapped to the requested profile.
+
+- [ ] **Step 1: Write failing importer tests for a valid Spanish instruction, duplicate source ID, missing Spanish instructions, and an unmapped profile.**
+
+```kotlin
+val report = importer.import(validDataset, validSchema, manifest)
+assertThat(report.published).isEqualTo(1)
+assertThat(report.excludedByReason["MISSING_ES_INSTRUCTIONS"]).isEqualTo(1)
+```
+
+- [ ] **Step 2: Run `./gradlew test --tests com.gymapp.catalog.ExerciseDatasetImporterTest`; verify failure.**
+- [ ] **Step 3: Add exercises and exercise-training-profile migrations with source commit, SHA-256, attribution, publication status, and unique source identity.**
+- [ ] **Step 4: Implement schema validation, SHA-256 verification, source-to-internal transformation, profile mappings, and a report with imported/published/excluded counts. Do not download or store source images/GIFs.**
+- [ ] **Step 5: Pin the approved source commit and manifest; map the initial published set for all six profiles.**
+- [ ] **Step 6: Rerun importer tests and commit `feat: import curated exercise catalogue`.**
+
+## Task 5: Implement manual routines and session logs
+
+**Files:**
+- Create: `backend/src/main/kotlin/com/gymapp/training/{WorkoutPlan,WorkoutSession,TrainingController,TrainingService,TrainingDtos}.kt`
+- Create: `backend/src/main/resources/db/migration/V004__training.sql`
 - Test: `backend/src/test/kotlin/com/gymapp/training/TrainingControllerIT.kt`
 
 **Interfaces:**
@@ -168,11 +189,11 @@ val request = CreateWorkoutPlanRequest(
 ```
 
 - [ ] **Step 2: Run training tests and verify failure.**
-- [ ] **Step 3: Add tables for exercises, plans, plan days, plan exercises, sessions, and set logs. Seed `PUSH_UP`, `BODYWEIGHT_SQUAT`, `PULL_UP_ASSISTED`, `BARBELL_SQUAT`, `BENCH_PRESS`, and `EASY_RUN` with profile tags.**
+- [ ] **Step 3: Add tables for plans, plan days, plan exercises, sessions, and set logs; consume only the published exercises imported in Task 4.**
 - [ ] **Step 4: Permit only owner access, positive sets/repetitions, and exercises tagged for the primary profile.**
 - [ ] **Step 5: Document requests/responses in OpenAPI, rerun tests, and commit `feat: add manual routines and session logs`.**
 
-## Task 5: Build the Android flow
+## Task 6: Build the Android flow
 
 **Files:**
 - Create: `android/app/src/main/java/com/gymapp/{network,auth,profile,training}/`
@@ -195,7 +216,7 @@ assertThat(viewModel.state.value.fieldError)
 - [ ] **Step 4: Implement catalogue, manual plan, and set-logging screens with accessibility labels.**
 - [ ] **Step 5: Add an instrumented registration-to-completed-session test; run unit and instrumented tests; commit `feat: add Android training onboarding`.**
 
-## Task 6: Build the iOS flow
+## Task 7: Build the iOS flow
 
 **Files:**
 - Create: `ios/GymApp/{App,Networking,Features/Auth,Features/Profile,Features/Training}/`
@@ -219,7 +240,7 @@ XCTAssertEqual(viewModel.validationMessage, "Puedes elegir hasta dos intereses s
 - [ ] **Step 4: Implement catalogue, manual plan, and set logging screens.**
 - [ ] **Step 5: Add the account-to-completed-session UI test; run XCTest/UI tests; commit `feat: add iOS training onboarding`.**
 
-## Task 7: Verify API contract and delivery acceptance
+## Task 8: Verify API contract and delivery acceptance
 
 **Files:**
 - Modify: `contracts/openapi.yaml`, `.github/workflows/ci.yml`
@@ -228,7 +249,7 @@ XCTAssertEqual(viewModel.validationMessage, "Puedes elegir hasta dos intereses s
 
 - [ ] **Step 1: Write a failing contract test asserting every implemented API route exists in OpenAPI.**
 - [ ] **Step 2: Make CI run backend tests, OpenAPI validation, Android tests, and iOS tests on supported runners.**
-- [ ] **Step 3: Write acceptance checks for beginner calisthenics, runner plus strength interest, invalid combination, manual plan, and session persistence.**
+- [ ] **Step 3: Write acceptance checks for the catalog import report, beginner calisthenics, runner plus strength interest, invalid combination, manual plan, and session persistence.**
 - [ ] **Step 4: Run all checks, record command/result in the acceptance document, and commit `test: verify first training vertical slice`.**
 
 ## Plan Self-Review
@@ -236,5 +257,3 @@ XCTAssertEqual(viewModel.validationMessage, "Puedes elegir hasta dos intereses s
 - Covers the approved first vertical slice and deliberately excludes later roadmap domains.
 - Covers all five segmentation dimensions, ownership, validation errors, and accessible native clients.
 - Every public API used by a client is defined before that client task.
-
-
