@@ -22,6 +22,8 @@
 - Índices compuestos para consultas por sede, membresía activa, vencimiento y asistencia.
 - `training_profiles` conserva nivel, perfil principal, objetivo, disponibilidad y fecha de vigencia; `profile_secondary_interests` admite como máximo dos intereses activos por perfil.
 - Los catálogos de perfiles e intereses son versionados y no se almacenan como texto libre en las rutinas; esto permite reglas de compatibilidad y analítica consistente.
+- `exercises` conserva `source_name`, `source_external_id`, `source_commit`, `source_file_sha256`, instrucciones en español e inglés, atribución, y `published_at`; el par `(source_name, source_external_id)` es único.
+- `exercise_training_profiles` relaciona los ejercicios publicados con uno o más perfiles de entrenamiento y conserva el origen editorial del mapeo.
 
 ## Propiedad y retención
 
