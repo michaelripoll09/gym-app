@@ -6,7 +6,7 @@ Gym App se lanzará inicialmente en Colombia como una aplicación personal de en
 
 ## Decisiones de producto
 
-- Todos los niveles de entrenamiento; nivel editable desde el perfil.
+- Personalización por nivel, perfil principal único (fitness general, culturismo/bodybuilding, powerlifting, running, CrossFit o calistenia), hasta dos intereses secundarios, disponibilidad y objetivo; todas las dimensiones son editables desde el perfil.
 - Rutinas por tres vías: planes curados, creador manual y generación/ajuste con IA.
 - IA completa en lanzamiento: generador guiado, coach conversacional y análisis de progreso; con controles de seguridad y sin asesoría médica.
 - Freemium para personas y suscripción por sede para gimnasios.
