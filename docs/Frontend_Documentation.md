@@ -12,6 +12,8 @@ Ambas apps comparten diseño, contratos API y reglas de producto, pero usan UI n
 - Gimnasio: vínculo, membresía, QR dinámico y estado de pagos.
 - Perfil: nivel, objetivos, privacidad, suscripción y ajustes.
 
+El onboarding y Perfil incluyen una sección de entrenamiento con nivel, perfil principal, intereses secundarios, objetivo y disponibilidad. La interfaz explica que el perfil principal guía la rutina y que los intereses secundarios solo complementan el plan; el usuario puede cambiar estas elecciones y revisar el impacto antes de regenerar una rutina.
+
 ### Criterios UX
 
 - Registro de serie en pocos toques, con valores recientes como sugerencia editable.
