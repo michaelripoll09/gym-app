@@ -39,6 +39,7 @@ La solución será nativa y empresarial:
 - Proveedor colombiano de pagos para membresías digitales; el adaptador permitirá sustituirlo sin modificar el dominio.
 - Proveedor de modelos de IA detrás de un `AI Gateway` con límites de gasto, versionado de prompts y trazabilidad.
 - Servicio de correo y notificaciones push mediante proveedores intercambiables.
+- Dataset de ejercicios: importación reproducible desde un commit fijado, validada contra JSON Schema y almacenada localmente; la aplicación nunca depende del repositorio de origen durante una sesión de usuario.
 
 ## Entornos
 
