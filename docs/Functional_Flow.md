@@ -3,8 +3,8 @@
 ## Usuario independiente
 
 1. Descarga la app, crea cuenta y acepta términos y política de privacidad.
-2. Completa perfil: nivel editable, objetivo, disponibilidad, equipamiento y restricciones no médicas.
-3. Elige un plan curado, crea una rutina o pide una propuesta a la IA.
+2. Completa perfil: nivel editable, perfil principal, hasta dos intereses secundarios, objetivo, disponibilidad, equipamiento y restricciones no médicas.
+3. Elige un plan curado filtrado por perfil, crea una rutina o pide una propuesta a la IA.
 4. Revisa y confirma la rutina antes de usarla.
 5. Durante la sesión registra ejecución y percepción del esfuerzo.
 6. Consulta progreso y recibe recomendaciones contextualizadas.
@@ -12,12 +12,13 @@
 
 ## Rutina generada con IA
 
-1. El usuario indica objetivo, nivel, días, duración, equipamiento y preferencias.
+1. El usuario indica objetivo, nivel, perfil principal, intereses secundarios, días, duración, equipamiento y preferencias.
 2. El backend valida que los datos estén dentro de los límites seguros del producto.
-3. La IA devuelve una propuesta estructurada: días, ejercicios, series, repeticiones, descanso, progresión y explicación.
-4. Se valida contra el catálogo de ejercicios y reglas de seguridad.
-5. El usuario edita o acepta; la rutina nunca se activa sin confirmación.
-6. El historial de cambios permite explicar recomendaciones posteriores.
+3. La IA prioriza el perfil principal; usa los intereses secundarios solo si son compatibles con el objetivo, la disponibilidad y la carga total.
+4. La IA devuelve una propuesta estructurada: días, ejercicios, series, repeticiones, descanso, progresión y explicación de cómo responde al perfil elegido.
+5. Se valida contra el catálogo de ejercicios, las reglas del perfil y los límites de seguridad.
+6. El usuario edita o acepta; la rutina nunca se activa sin confirmación.
+7. El historial de cambios permite explicar recomendaciones posteriores.
 
 ## Vinculación a un gimnasio
 
