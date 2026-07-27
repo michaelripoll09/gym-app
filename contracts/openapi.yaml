@@ -1,0 +1,24 @@
+openapi: 3.1.0
+info:
+  title: Gym App API
+  version: 0.1.0
+  description: API inicial para el primer vertical de entrenamiento.
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Comprueba que el servicio está disponible.
+      responses:
+        '200':
+          description: Servicio disponible.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
