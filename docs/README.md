@@ -10,6 +10,7 @@ Gym App es una plataforma colombiana que combina una aplicación personal de ent
 - [Frontend](Frontend_Documentation.md)
 - [Backend](Backend_Documentation.md)
 - [Datos](Database_Documentation.md)
+- [Catálogo de ejercicios](Exercise_Catalog_Documentation.md)
 - [Inteligencia artificial](AI_Documentation.md)
 - [Pagos y monetización](Payments_Documentation.md)
 - [Seguridad y privacidad](Security_Privacy_Documentation.md)
