@@ -22,3 +22,105 @@ paths:
                   status:
                     type: string
                     const: ok
+  /auth/register:
+    post:
+      operationId: register
+      summary: Crea una cuenta de atleta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Cuenta creada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '409':
+          description: El correo ya está registrado.
+  /auth/login:
+    post:
+      operationId: login
+      summary: Inicia sesión con correo y contraseña.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Sesión iniciada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Credenciales inválidas.
+  /me:
+    get:
+      operationId: getCurrentUser
+      summary: Obtiene la cuenta autenticada.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Cuenta autenticada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          description: Bearer token ausente o inválido.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password, acceptedTermsAt]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        acceptedTermsAt:
+          type: string
+          format: date-time
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AuthResponse:
+      type: object
+      required: [userId, accessToken]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        accessToken:
+          type: string
+    MeResponse:
+      type: object
+      required: [userId, email]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
