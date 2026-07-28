@@ -46,6 +46,10 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+springBoot {
+    mainClass.set("com.gymapp.GymAppApplicationKt")
+}
+
 tasks.register<JavaExec>("runCatalogImport") {
     group = "application"
     description = "Imports the pinned exercise dataset into PostgreSQL."
