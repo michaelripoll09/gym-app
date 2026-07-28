@@ -1,0 +1,5 @@
+create table workout_plans (id uuid primary key, user_id uuid not null references users(id), name varchar(255) not null, created_at timestamptz not null default now());
+create table workout_plan_days (id uuid primary key, plan_id uuid not null references workout_plans(id) on delete cascade, name varchar(255) not null, position integer not null);
+create table workout_plan_exercises (id uuid primary key, day_id uuid not null references workout_plan_days(id) on delete cascade, exercise_id uuid not null references exercises(id), sets integer not null check (sets > 0), min_repetitions integer not null check (min_repetitions > 0), max_repetitions integer not null check (max_repetitions >= min_repetitions));
+create table workout_sessions (id uuid primary key, plan_id uuid not null references workout_plans(id) on delete cascade, user_id uuid not null references users(id), started_at timestamptz not null default now());
+create table workout_set_logs (id uuid primary key, session_id uuid not null references workout_sessions(id) on delete cascade, exercise_id uuid not null references exercises(id), repetitions integer not null check (repetitions > 0));
