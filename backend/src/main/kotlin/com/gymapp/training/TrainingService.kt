@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
+class PlanAccessDeniedException : RuntimeException()
+
 @Service
 class TrainingService(private val jdbc: JdbcTemplate) {
     @Transactional fun createPlan(userId: UUID, request: CreateWorkoutPlanRequest): UUID {
@@ -21,7 +23,7 @@ class TrainingService(private val jdbc: JdbcTemplate) {
         }; return planId
     }
     @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): UUID {
-        require(jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) == 1)
+        if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
         require(request.sets.isNotEmpty() && request.sets.all { it.repetitions > 0 })
         val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id) values (?, ?, ?)", sessionId, planId, userId)
         request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions) values (?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions) }; return sessionId

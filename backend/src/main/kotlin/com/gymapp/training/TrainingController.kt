@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestAttribute
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.PathVariable
 import java.util.UUID
 
@@ -22,4 +23,6 @@ data class IdResponse(val id: UUID)
 class TrainingController(private val service: TrainingService) {
     @PostMapping fun create(@RequestAttribute("authenticatedUserId") userId: UUID, @RequestBody request: CreateWorkoutPlanRequest) = ResponseEntity.status(HttpStatus.CREATED).body(IdResponse(service.createPlan(userId, request)))
     @PostMapping("/{planId}/sessions") fun session(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID, @RequestBody request: CreateWorkoutSessionRequest) = ResponseEntity.status(HttpStatus.CREATED).body(IdResponse(service.createSession(userId, planId, request)))
+    @ExceptionHandler(IllegalArgumentException::class) fun invalidRequest() = ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).build<Void>()
+    @ExceptionHandler(PlanAccessDeniedException::class) fun forbidden() = ResponseEntity.status(HttpStatus.FORBIDDEN).build<Void>()
 }
