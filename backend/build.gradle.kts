@@ -45,3 +45,20 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("runCatalogImport") {
+    group = "application"
+    description = "Imports the pinned exercise dataset into PostgreSQL."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.gymapp.catalog.CatalogImportCommandKt")
+    doFirst {
+        val dataset = project.findProperty("catalogDataset")?.toString()
+            ?: error("Provide -PcatalogDataset=<path-to-exercises.json>")
+        args(
+            dataset,
+            "hasaneyldrm/exercises-dataset",
+            "7455efae41b330c265e7cd4b78dfa848e7ce5ebd",
+            "656634224b8977b99a6d765470ee123260d4979715eaa4e7c0b7c8bb0d79f93d",
+        )
+    }
+}

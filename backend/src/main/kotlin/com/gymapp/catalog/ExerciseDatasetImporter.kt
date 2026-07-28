@@ -9,6 +9,7 @@ data class ImportCandidate(
     val name: String,
     val spanishInstructions: List<String>,
     val profiles: Set<TrainingProfileCode>,
+    val attribution: String? = null,
 )
 
 data class CatalogImportReport(
@@ -33,6 +34,7 @@ object ExerciseDatasetImporter {
             ImportCandidate(
                 sourceId = record.path("id").asText(),
                 name = metadata.name,
+                attribution = record.path("attribution").asText().ifBlank { null },
                 spanishInstructions = record.path("instruction_steps").path("es").iterator().asSequence()
                     .map { instruction -> instruction.asText() }
                     .filter(String::isNotBlank)

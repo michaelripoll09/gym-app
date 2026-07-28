@@ -4,6 +4,8 @@
 
 La fuente inicial es `hasaneyldrm/exercises-dataset`, versión fijada por commit antes de cada importación. Gym App no consulta ese repositorio en tiempo de ejecución: el archivo `data/exercises.json` se descarga durante la preparación del catálogo, se valida y se importa a PostgreSQL.
 
+La carga se ejecuta explícitamente, nunca al iniciar la API: desde `backend`, ejecutar `./gradlew runCatalogImport -PcatalogDataset=/ruta/exercises.json`. El comando compara el SHA-256 contra el manifiesto fijado y falla antes de escribir si no coincide.
+
 ## Datos incorporados
 
 - Identificador externo de la fuente, nombre, categoría, parte corporal, equipo, músculo objetivo y músculos secundarios.
