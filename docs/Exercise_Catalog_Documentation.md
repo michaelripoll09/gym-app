@@ -16,7 +16,7 @@ Las miniaturas y GIFs no se copian ni se muestran en el lanzamiento. El reposito
 
 ## Curaduría de Gym App
 
-Los datos de origen describen músculos y equipo, no disciplinas. Un archivo editorial versionado asigna a cada ejercicio publicado cero o más perfiles: fitness general, bodybuilding, powerlifting, running, CrossFit y calistenia. La publicación requiere revisión humana; un ejercicio sin mapeo no aparece en recomendaciones ni en el catálogo de la app.
+Los datos de origen describen músculos y equipo, no disciplinas. La primera carga genera un mapeo determinista a partir de categoría, equipo y nombre, y lo marca como `PENDING_EDITORIAL_REVIEW`: fitness general, bodybuilding, powerlifting, running, CrossFit y calistenia. La revisión humana aprueba, corrige o rechaza cada asignación antes de usarla en recomendaciones. Un ejercicio sin mapeo no aparece en recomendaciones ni en el catálogo de la app.
 
 El lanzamiento usa un subconjunto curado. El resto queda importado como no publicado para futuras revisiones. La curaduría también puede excluir ejercicios que requieran equipo poco común, tengan instrucciones insuficientes o no sean apropiados para el nivel del usuario.
 

@@ -171,7 +171,7 @@ assertThat(report.excludedByReason["MISSING_ES_INSTRUCTIONS"]).isEqualTo(1)
 
 **Files:**
 - Create: `backend/src/main/kotlin/com/gymapp/training/{WorkoutPlan,WorkoutSession,TrainingController,TrainingService,TrainingDtos}.kt`
-- Create: `backend/src/main/resources/db/migration/V004__training.sql`
+- Create: `backend/src/main/resources/db/migration/V005__training.sql` (V004 is reserved for immutable catalogue-source metadata after V003 was applied locally.)
 - Test: `backend/src/test/kotlin/com/gymapp/training/TrainingControllerIT.kt`
 
 **Interfaces:**
