@@ -17,6 +17,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class LoginRequest(val email: String, val password: String)
 @Serializable data class AuthResponse(val userId: String, val accessToken: String)
 @Serializable data class TrainingProfileRequest(val experienceLevel: String, val primaryProfile: String, val secondaryProfiles: List<String>, val goal: String, val availabilityBand: String, val availableDaysPerWeek: Int, val sessionDurationMinutes: Int)
+@Serializable data class TrainingProfileResponse(val experienceLevel: String, val primaryProfile: String, val secondaryProfiles: List<String>, val goal: String, val availabilityBand: String, val availableDaysPerWeek: Int, val sessionDurationMinutes: Int)
 @Serializable data class ExerciseResponse(val id: String, val name: String, val spanishInstructions: String)
 @Serializable data class WorkoutPlanExerciseRequest(val exerciseId: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 @Serializable data class WorkoutDayRequest(val name: String, val exercises: List<WorkoutPlanExerciseRequest>)
@@ -34,6 +35,7 @@ interface GymApi {
     @POST("auth/register") suspend fun register(@Body request: RegisterRequest): AuthResponse
     @POST("auth/login") suspend fun login(@Body request: LoginRequest): AuthResponse
     @PUT("me/training-profile") suspend fun saveProfile(@Header("Authorization") authorization: String, @Body request: TrainingProfileRequest)
+    @GET("me/training-profile") suspend fun trainingProfile(@Header("Authorization") authorization: String): TrainingProfileResponse
     @GET("exercises") suspend fun exercises(@Query("profile") profile: String): List<ExerciseResponse>
     @POST("workout-plans") suspend fun createWorkoutPlan(@Header("Authorization") authorization: String, @Body request: CreateWorkoutPlanRequest): IdResponse
     @GET("workout-plans") suspend fun workoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>

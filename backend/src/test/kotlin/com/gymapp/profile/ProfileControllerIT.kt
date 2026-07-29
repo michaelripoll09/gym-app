@@ -26,7 +26,31 @@ class ProfileControllerIT(@Autowired private val json: ObjectMapper, @LocalServe
 
         assertEquals(HttpStatus.OK.value(), saved.statusCode())
         assertEquals(HttpStatus.OK.value(), retrieved.statusCode())
-        assertEquals("CALISTHENICS", body(retrieved).getValue("primaryProfile"))
+        val profile = body(retrieved)
+        assertEquals("BEGINNER", profile.getValue("experienceLevel"))
+        assertEquals("CALISTHENICS", profile.getValue("primaryProfile"))
+        assertEquals(listOf("RUNNING"), profile.getValue("secondaryProfiles"))
+        assertEquals("MUSCLE_GAIN", profile.getValue("goal"))
+        assertEquals("MEDIUM", profile.getValue("availabilityBand"))
+        assertEquals(3, profile.getValue("availableDaysPerWeek"))
+        assertEquals(60, profile.getValue("sessionDurationMinutes"))
+    }
+
+    @Test
+    fun `returns not found when the authenticated account has no profile`() {
+        val response = get(registerToken())
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), response.statusCode())
+    }
+
+    @Test
+    fun `does not expose a profile to another authenticated account`() {
+        val owner = registerToken()
+        put(owner, validProfile())
+
+        val response = get(registerToken())
+
+        assertEquals(HttpStatus.NOT_FOUND.value(), response.statusCode())
     }
 
     @Test
