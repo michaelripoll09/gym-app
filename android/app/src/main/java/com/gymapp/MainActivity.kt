@@ -49,6 +49,8 @@ import com.gymapp.profile.ProfileEditorState
 import com.gymapp.profile.profileForUpdatedCatalog
 import com.gymapp.profile.resolveProfileEditor
 import com.gymapp.profile.resolveProfileRecovery
+import com.gymapp.progress.TrainingProgressScreen
+import com.gymapp.progress.TrainingProgressState
 import com.gymapp.routines.RoutineDraftState
 import com.gymapp.routines.RoutineEditorScreen
 import com.gymapp.routines.RoutineListScreen
@@ -173,7 +175,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, PROFILE, EDITOR, ROUTINES, SESSION, HISTORY }
+private enum class TrainingScreen { CATALOG, PROFILE, EDITOR, ROUTINES, SESSION, HISTORY, PROGRESS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
@@ -192,6 +194,8 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var sessionError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(SessionHistoryState()) }
     var refreshHistory by remember { mutableIntStateOf(0) }
+    var progress by remember { mutableStateOf(TrainingProgressState()) }
+    var refreshProgress by remember { mutableIntStateOf(0) }
     var editor by remember { mutableStateOf<ProfileEditorState>(ProfileEditorState.Loading) }
     var editorAttempt by remember { mutableIntStateOf(0) }
     var editorSaving by remember { mutableStateOf(false) }
@@ -223,6 +227,14 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
             runCatching { GymApi.create().workoutSessions("Bearer $token") }
                 .onSuccess { history = SessionHistoryState(sessions = it) }
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { history = history.copy(loading = false, error = it.message ?: "No pudimos cargar tu historial") } }
+        }
+    }
+    LaunchedEffect(screen, refreshProgress) {
+        if (screen == TrainingScreen.PROGRESS) {
+            progress = TrainingProgressState(loading = true)
+            runCatching { GymApi.create().workoutSessions("Bearer $token") }
+                .onSuccess { progress = TrainingProgressState.loaded(it, Instant.now()) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
         }
     }
 
@@ -262,7 +274,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         }, onBack = { screen = TrainingScreen.CATALOG })
         TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; screen = TrainingScreen.SESSION
-        }, onHistory = { screen = TrainingScreen.HISTORY }, onBack = { screen = TrainingScreen.CATALOG })
+        }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { screen = TrainingScreen.CATALOG })
         TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onStateChanged = { session = it }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null
@@ -276,5 +288,6 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onBack = { screen = TrainingScreen.ROUTINES })
     }
 }
