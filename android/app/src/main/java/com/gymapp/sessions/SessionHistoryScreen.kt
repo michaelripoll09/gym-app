@@ -70,6 +70,7 @@ private fun SessionHistoryDetail(session: WorkoutSessionResponse, onBack: () -> 
                 Column(Modifier.padding(16.dp)) {
                     Text(set.exerciseName, color = Color.White, fontSize = 18.sp)
                     Text("Repeticiones realizadas: ${set.repetitions}", color = Color.LightGray)
+                    set.loadKg?.let { Text("Carga: $it kg", color = Color.LightGray) }
                 }
             }
         }

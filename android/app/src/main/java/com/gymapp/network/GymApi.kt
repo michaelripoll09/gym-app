@@ -26,9 +26,9 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class WorkoutPlanExerciseResponse(val exerciseId: String, val name: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 @Serializable data class WorkoutPlanDayResponse(val name: String, val exercises: List<WorkoutPlanExerciseResponse>)
 @Serializable data class WorkoutPlanResponse(val id: String, val name: String, val days: List<WorkoutPlanDayResponse>)
-@Serializable data class SetLogRequest(val exerciseId: String, val repetitions: Int)
+@Serializable data class SetLogRequest(val exerciseId: String, val repetitions: Int, val loadKg: Double? = null)
 @Serializable data class CreateWorkoutSessionRequest(val sets: List<SetLogRequest>)
-@Serializable data class SessionSetResponse(val exerciseName: String, val repetitions: Int)
+@Serializable data class SessionSetResponse(val exerciseName: String, val repetitions: Int, val loadKg: Double? = null)
 @Serializable data class WorkoutSessionResponse(val id: String, val planName: String, val startedAt: String, val sets: List<SessionSetResponse>)
 
 interface GymApi {

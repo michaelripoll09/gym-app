@@ -16,13 +16,13 @@ import java.util.UUID
 data class ExercisePlanRequest(val exerciseId: UUID, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int? = null)
 data class WorkoutDayRequest(val name: String, val exercises: List<ExercisePlanRequest>)
 data class CreateWorkoutPlanRequest(val name: String, val days: List<WorkoutDayRequest>)
-data class SetLogRequest(val exerciseId: UUID, val repetitions: Int)
+data class SetLogRequest(val exerciseId: UUID, val repetitions: Int, val loadKg: Double? = null)
 data class CreateWorkoutSessionRequest(val sets: List<SetLogRequest>)
 data class IdResponse(val id: UUID)
 data class WorkoutPlanExerciseResponse(val exerciseId: UUID, val name: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 data class WorkoutPlanDayResponse(val name: String, val exercises: List<WorkoutPlanExerciseResponse>)
 data class WorkoutPlanResponse(val id: UUID, val name: String, val days: List<WorkoutPlanDayResponse>)
-data class SessionSetResponse(val exerciseName: String, val repetitions: Int)
+data class SessionSetResponse(val exerciseName: String, val repetitions: Int, val loadKg: Double? = null)
 data class WorkoutSessionResponse(val id: UUID, val planName: String, val startedAt: String, val sets: List<SessionSetResponse>)
 
 @RestController

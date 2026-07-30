@@ -307,7 +307,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onStateChanged = { session = it }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null
-                val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt()) })
+                val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) })
                 runCatching { GymApi.create().createWorkoutSession("Bearer $token", currentSession.planId, request) }.onSuccess {
                     refreshPlans++; refreshToday++; screen = sessionReturnScreen
                 }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { sessionError = it.message ?: "No fue posible guardar la sesión" } }

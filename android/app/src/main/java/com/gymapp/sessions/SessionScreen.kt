@@ -28,6 +28,7 @@ fun SessionScreen(state: SessionDraftState, saving: Boolean, error: String?, onS
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${set.exerciseName} · Serie ${set.setNumber}", color = Color.White)
                     OutlinedTextField(set.repetitions, { onStateChanged(state.updateRepetitions(index, it)) }, label = { Text("Repeticiones realizadas") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                    OutlinedTextField(set.loadKg, { onStateChanged(state.updateLoadKg(index, it)) }, label = { Text("Carga (kg, opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
                 }
             }
         }

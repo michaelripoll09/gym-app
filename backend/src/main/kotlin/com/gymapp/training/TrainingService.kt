@@ -11,7 +11,7 @@ class PlanAccessDeniedException : RuntimeException()
 class TrainingService(private val jdbc: JdbcTemplate) {
     fun listSessions(userId: UUID): List<WorkoutSessionResponse> = jdbc.query("select s.id, s.started_at, p.name from workout_sessions s join workout_plans p on p.id=s.plan_id where s.user_id=? order by s.started_at desc", { rows, _ ->
         val sessionId = rows.getObject("id", UUID::class.java)
-        WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions")) }, sessionId))
+        WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble()) }, sessionId))
     }, userId)
 
     fun listPlans(userId: UUID, archived: Boolean = false): List<WorkoutPlanResponse> = jdbc.query("select id, name from workout_plans where user_id = ? and archived=? order by created_at desc", { planRows, _ ->
@@ -67,8 +67,8 @@ class TrainingService(private val jdbc: JdbcTemplate) {
     }
     @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): UUID {
         if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
-        require(request.sets.isNotEmpty() && request.sets.all { it.repetitions > 0 })
+        require(request.sets.isNotEmpty() && request.sets.all { it.repetitions > 0 && (it.loadKg == null || it.loadKg >= 0) })
         val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id) values (?, ?, ?)", sessionId, planId, userId)
-        request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions) values (?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions) }; return sessionId
+        request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions, load_kg) values (?, ?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions, set.loadKg) }; return sessionId
     }
 }

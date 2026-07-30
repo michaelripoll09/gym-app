@@ -33,6 +33,15 @@ class SessionDraftStateTest {
     }
 
     @Test
+    fun `accepts an optional non negative load and rejects invalid load`() {
+        val complete = SessionDraftState.from(plan).updateRepetitions(0, "10").updateRepetitions(1, "8")
+
+        assertEquals(null, complete.updateLoadKg(0, "42.5").validationMessage())
+        assertEquals("Registra una carga en kg válida o déjala vacía", complete.updateLoadKg(0, "-1").validationMessage())
+        assertEquals("Registra una carga en kg válida o déjala vacía", complete.updateLoadKg(0, "mucho").validationMessage())
+    }
+
+    @Test
     fun `disables finishing while a session is being saved`() {
         assertEquals(false, canFinishSession(true))
         assertEquals(true, canFinishSession(false))

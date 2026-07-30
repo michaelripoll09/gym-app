@@ -4,11 +4,16 @@ import com.gymapp.network.WorkoutPlanResponse
 
 fun canFinishSession(saving: Boolean) = !saving
 
-data class SessionSetDraft(val exerciseId: String, val exerciseName: String, val setNumber: Int, val repetitions: String = "")
+data class SessionSetDraft(val exerciseId: String, val exerciseName: String, val setNumber: Int, val repetitions: String = "", val loadKg: String = "")
 
 data class SessionDraftState(val planId: String, val planName: String, val sets: List<SessionSetDraft>) {
     fun updateRepetitions(index: Int, value: String) = copy(sets = sets.mapIndexed { current, item -> if (current == index) item.copy(repetitions = value) else item })
-    fun validationMessage(): String? = if (sets.isEmpty() || sets.any { it.repetitions.toIntOrNull()?.let { value -> value <= 0 } != false }) "Registra repeticiones mayores que cero en cada serie" else null
+    fun updateLoadKg(index: Int, value: String) = copy(sets = sets.mapIndexed { current, item -> if (current == index) item.copy(loadKg = value) else item })
+    fun validationMessage(): String? = when {
+        sets.isEmpty() || sets.any { it.repetitions.toIntOrNull()?.let { value -> value <= 0 } != false } -> "Registra repeticiones mayores que cero en cada serie"
+        sets.any { it.loadKg.isNotBlank() && (it.loadKg.toDoubleOrNull()?.let { value -> value < 0 } != false) } -> "Registra una carga en kg válida o déjala vacía"
+        else -> null
+    }
 
     companion object {
         fun from(plan: WorkoutPlanResponse) = SessionDraftState(

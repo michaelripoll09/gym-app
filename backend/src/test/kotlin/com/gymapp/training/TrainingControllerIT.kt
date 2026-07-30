@@ -117,7 +117,7 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         val olderPlan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sesion antigua", "days" to listOf(mapOf("name" to "A", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
         val newerPlan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sesion reciente", "days" to listOf(mapOf("name" to "B", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
         val older = request("POST", "/api/v1/workout-plans/${body(olderPlan).getValue("id")}/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8))))
-        val newer = request("POST", "/api/v1/workout-plans/${body(newerPlan).getValue("id")}/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10))))
+        val newer = request("POST", "/api/v1/workout-plans/${body(newerPlan).getValue("id")}/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 42.5))))
         jdbc.update("update workout_sessions set started_at = ? where id = ?", OffsetDateTime.parse("2026-07-27T10:00:00Z"), UUID.fromString(body(older).getValue("id") as String))
         jdbc.update("update workout_sessions set started_at = ? where id = ?", OffsetDateTime.parse("2026-07-28T10:00:00Z"), UUID.fromString(body(newer).getValue("id") as String))
         val other = registerToken(); saveCalisthenicsProfile(other)
@@ -130,6 +130,7 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(listOf("Sesion reciente", "Sesion antigua"), sessions.map { it.getValue("planName") })
         val newestSets = sessions.first().getValue("sets") as List<Map<String, Any>>
         assertEquals(10, newestSets.single().getValue("repetitions"))
+        assertEquals(42.5, newestSets.single().getValue("loadKg"))
         assertEquals(false, sessions.any { it.getValue("planName") == "Sesion ajena" })
     }
 
