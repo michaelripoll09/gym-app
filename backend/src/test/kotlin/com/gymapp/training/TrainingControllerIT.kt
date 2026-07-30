@@ -1,6 +1,7 @@
 package com.gymapp.training
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -17,6 +18,12 @@ import java.util.UUID
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired private val jdbc: JdbcTemplate, @LocalServerPort private val port: Int) {
+    @BeforeEach
+    fun seedExerciseFixtures() {
+        seedExercise("00000000-0000-0000-0000-000000000001", "fixture-calisthenics", "Flexión de prueba", "CALISTHENICS")
+        seedExercise("00000000-0000-0000-0000-000000000002", "fixture-bodybuilding", "Curl de prueba", "BODYBUILDING")
+    }
+
     @Test
     fun `archives and restores an owners plan without deleting its sessions`() {
         val owner = registerToken(); saveCalisthenicsProfile(owner)
@@ -135,6 +142,10 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
     }
 
     private fun registerToken(): String = (body(request("POST", "/api/v1/auth/register", null, mapOf("email" to "training-${UUID.randomUUID()}@example.com", "password" to "Passw0rd!", "acceptedTermsAt" to "2026-07-27T00:00:00Z"))).getValue("accessToken") as String)
+    private fun seedExercise(id: String, sourceId: String, name: String, profile: String) {
+        jdbc.update("insert into exercises (id, source_name, source_external_id, source_commit, name, spanish_instructions, published, source_file_sha256, attribution, review_status) values (?, 'test-fixture', ?, 'test', ?, 'Instrucción de prueba', true, '', null, 'APPROVED') on conflict (source_name, source_external_id) do nothing", UUID.fromString(id), sourceId, name)
+        jdbc.update("insert into exercise_training_profiles (exercise_id, profile_code) values (?, ?) on conflict do nothing", UUID.fromString(id), profile)
+    }
     private fun saveCalisthenicsProfile(token: String) { request("PUT", "/api/v1/me/training-profile", token, mapOf("experienceLevel" to "BEGINNER", "primaryProfile" to "CALISTHENICS", "secondaryProfiles" to emptyList<String>(), "goal" to "MUSCLE_GAIN", "availabilityBand" to "MEDIUM", "availableDaysPerWeek" to 3, "sessionDurationMinutes" to 60)) }
     private fun request(method: String, path: String, token: String?, payload: Any?): HttpResponse<String> { val builder = HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).header("Content-Type", "application/json"); if (token != null) builder.header("Authorization", "Bearer $token"); val request = when (method) { "GET" -> builder.GET().build(); "PUT" -> builder.PUT(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload))).build(); else -> builder.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload))).build() }; return client.send(request, HttpResponse.BodyHandlers.ofString()) }
     @Suppress("UNCHECKED_CAST") private fun body(response: HttpResponse<String>) = json.readValue(response.body(), Map::class.java) as Map<String, Any>
