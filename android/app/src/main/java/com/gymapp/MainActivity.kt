@@ -66,6 +66,8 @@ import com.gymapp.today.TodayTrainingState
 import com.gymapp.today.plansForToday
 import com.gymapp.today.spanishDayName
 import com.gymapp.today.todayLoadError
+import com.gymapp.summary.WeeklySummaryScreen
+import com.gymapp.summary.WeeklySummaryState
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.launch
@@ -184,7 +186,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, SUMMARY }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
@@ -211,6 +213,8 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
+    var refreshWeeklySummary by remember { mutableIntStateOf(0) }
     var curatedPlans by remember { mutableStateOf(CuratedPlansState()) }
     var refreshCuratedPlans by remember { mutableIntStateOf(0) }
     var selectedCuratedPlan by remember { mutableStateOf<CuratedPlanResponse?>(null) }
@@ -269,6 +273,14 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
         }
     }
+    LaunchedEffect(screen, refreshWeeklySummary) {
+        if (screen == TrainingScreen.SUMMARY) {
+            weeklySummary = WeeklySummaryState(loading = true)
+            runCatching { GymApi.create().weeklyTrainingSummary("Bearer $token") }
+                .onSuccess { weeklySummary = WeeklySummaryState(summary = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else weeklySummary = WeeklySummaryState(error = "No pudimos cargar tu resumen semanal") }
+        }
+    }
     LaunchedEffect(screen, refreshCuratedPlans) {
         if (screen == TrainingScreen.CURATED) {
             curatedPlans = CuratedPlansState(loading = true)
@@ -279,7 +291,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     }
 
     when (screen) {
-        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowCuratedPlans = { selectedCuratedPlan = null; curatedPlanError = null; screen = TrainingScreen.CURATED }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowProfile = { screen = TrainingScreen.PROFILE })
+        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowCuratedPlans = { selectedCuratedPlan = null; curatedPlanError = null; screen = TrainingScreen.CURATED }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowSummary = { screen = TrainingScreen.SUMMARY }, onShowProfile = { screen = TrainingScreen.PROFILE })
         TrainingScreen.CURATED -> CuratedPlansScreen(curatedPlans, selectedCuratedPlan, adoptingCuratedPlan, curatedPlanError, onSelect = { selectedCuratedPlan = it; curatedPlanError = null }, onAdopt = { plan -> scope.launch {
             adoptingCuratedPlan = true; curatedPlanError = null
             runCatching { GymApi.create().adoptCuratedPlan("Bearer $token", plan.id) }
@@ -332,7 +344,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 sessionSaving = true; sessionError = null
                 val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) })
                 runCatching { GymApi.create().createWorkoutSession("Bearer $token", currentSession.planId, request) }.onSuccess {
-                    refreshPlans++; refreshToday++; screen = sessionReturnScreen
+                    refreshPlans++; refreshToday++; refreshWeeklySummary++; screen = sessionReturnScreen
                 }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { sessionError = it.message ?: "No fue posible guardar la sesión" } }
                 sessionSaving = false
             }
@@ -341,5 +353,6 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
         TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.SUMMARY -> WeeklySummaryScreen(weeklySummary, onRetry = { refreshWeeklySummary++ }, onBack = { screen = TrainingScreen.CATALOG })
     }
 }

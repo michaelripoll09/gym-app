@@ -14,6 +14,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.OffsetDateTime
+import java.time.LocalDate
 import java.util.UUID
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -54,6 +55,60 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         val response = request("POST", "/api/v1/curated-plans/starter-bodybuilding-beginner-muscle-gain/adopt", token, emptyMap<String, Any>())
 
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), response.statusCode())
+    }
+
+    @Test
+    fun `returns an empty weekly summary when the user has no active training`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+
+        val response = request("GET", "/api/v1/training-summary/weekly", token, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        val summary = body(response)
+        assertEquals(0, summary.getValue("completedSessions"))
+        assertEquals(0, summary.getValue("scheduledSessions"))
+        assertEquals(0, summary.getValue("adherencePercent"))
+        assertEquals(0.0, summary.getValue("volumeKg"))
+        assertEquals(null, summary["nextSession"])
+    }
+
+    @Test
+    fun `summarizes current week adherence volume and next session`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", token, mapOf("name" to "Semana activa", "days" to listOf(
+            mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 2, "minRepetitions" to 8, "maxRepetitions" to 8))),
+            mapOf("name" to "MiÃ©rcoles", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 2, "minRepetitions" to 8, "maxRepetitions" to 8))),
+        )))
+        val session = request("POST", "/api/v1/workout-plans/${body(plan).getValue("id")}/sessions", token, mapOf("sets" to listOf(
+            mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 50.0),
+            mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8),
+        )))
+        jdbc.update("update workout_sessions set started_at = ? where id = ?", OffsetDateTime.now(), UUID.fromString(body(session).getValue("id") as String))
+
+        val response = request("GET", "/api/v1/training-summary/weekly", token, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        val summary = body(response)
+        assertEquals(1, summary.getValue("completedSessions"))
+        assertEquals(2, summary.getValue("scheduledSessions"))
+        assertEquals(50, summary.getValue("adherencePercent"))
+        assertEquals(500.0, summary.getValue("volumeKg"))
+        assertEquals("Semana activa", (summary.getValue("nextSession") as Map<*, *>)["planName"])
+    }
+
+    @Test
+    fun `excludes volume from an archived plans session`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", token, mapOf("name" to "Archivada", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val planId = body(plan).getValue("id") as String
+        request("POST", "/api/v1/workout-plans/$planId/sessions", token, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 30.0))))
+        request("PUT", "/api/v1/workout-plans/$planId/archive", token, null)
+
+        val summary = body(request("GET", "/api/v1/training-summary/weekly", token, null))
+
+        assertEquals(0.0, summary.getValue("volumeKg"))
     }
 
     @Test
