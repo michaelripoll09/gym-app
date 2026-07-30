@@ -40,6 +40,9 @@ interface GymApi {
     @POST("workout-plans") suspend fun createWorkoutPlan(@Header("Authorization") authorization: String, @Body request: CreateWorkoutPlanRequest): IdResponse
     @PUT("workout-plans/{planId}") suspend fun updateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutPlanRequest)
     @GET("workout-plans") suspend fun workoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>
+    @GET("workout-plans/archived") suspend fun archivedWorkoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>
+    @PUT("workout-plans/{planId}/archive") suspend fun archiveWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
+    @PUT("workout-plans/{planId}/restore") suspend fun restoreWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): IdResponse
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
     companion object {

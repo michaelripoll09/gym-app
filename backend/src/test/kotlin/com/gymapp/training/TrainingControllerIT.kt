@@ -18,6 +18,24 @@ import java.util.UUID
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired private val jdbc: JdbcTemplate, @LocalServerPort private val port: Int) {
     @Test
+    fun `archives and restores an owners plan without deleting its sessions`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val created = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Archivable", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val planId = body(created).getValue("id") as String
+        request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8))))
+
+        val archived = request("PUT", "/api/v1/workout-plans/$planId/archive", owner, null)
+        val active = request("GET", "/api/v1/workout-plans", owner, null)
+        val sessions = request("GET", "/api/v1/workout-sessions", owner, null)
+        val restored = request("PUT", "/api/v1/workout-plans/$planId/restore", owner, null)
+
+        assertEquals(HttpStatus.NO_CONTENT.value(), archived.statusCode())
+        assertEquals(emptyList<Any>(), json.readValue(active.body(), List::class.java))
+        assertEquals(1, (json.readValue(sessions.body(), List::class.java) as List<*>).size)
+        assertEquals(HttpStatus.NO_CONTENT.value(), restored.statusCode())
+    }
+    @Test
     fun `updates an owners workout plan without creating another`() {
         val owner = registerToken(); saveCalisthenicsProfile(owner)
         val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)

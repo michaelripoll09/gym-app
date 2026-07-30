@@ -14,7 +14,7 @@ class TrainingService(private val jdbc: JdbcTemplate) {
         WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions")) }, sessionId))
     }, userId)
 
-    fun listPlans(userId: UUID): List<WorkoutPlanResponse> = jdbc.query("select id, name from workout_plans where user_id = ? order by created_at desc", { planRows, _ ->
+    fun listPlans(userId: UUID, archived: Boolean = false): List<WorkoutPlanResponse> = jdbc.query("select id, name from workout_plans where user_id = ? and archived=? order by created_at desc", { planRows, _ ->
         WorkoutPlanResponse(
             id = planRows.getObject("id", UUID::class.java),
             name = planRows.getString("name"),
@@ -34,7 +34,7 @@ class TrainingService(private val jdbc: JdbcTemplate) {
                 )
             }, planRows.getObject("id", UUID::class.java))
         )
-    }, userId)
+    }, userId, archived)
 
     @Transactional fun createPlan(userId: UUID, request: CreateWorkoutPlanRequest): UUID {
         require(request.name.isNotBlank() && request.days.isNotEmpty())
@@ -50,6 +50,9 @@ class TrainingService(private val jdbc: JdbcTemplate) {
         jdbc.update("update workout_plans set name=? where id=?", request.name, planId)
         jdbc.update("delete from workout_plan_days where plan_id=?", planId)
         writePlanDays(planId, request, profile)
+    }
+    fun archivePlan(userId: UUID, planId: UUID, archived: Boolean) {
+        if (jdbc.update("update workout_plans set archived=? where id=? and user_id=?", archived, planId, userId) != 1) throw PlanAccessDeniedException()
     }
     private fun writePlanDays(planId: UUID, request: CreateWorkoutPlanRequest, profile: String) {
         request.days.forEachIndexed { position, day ->

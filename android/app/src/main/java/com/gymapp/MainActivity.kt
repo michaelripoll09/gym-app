@@ -190,6 +190,8 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var plansLoading by remember { mutableStateOf(false) }
     var plansError by remember { mutableStateOf<String?>(null) }
     var refreshPlans by remember { mutableIntStateOf(0) }
+    var archivedPlans by remember { mutableStateOf(false) }
+    var pendingArchive by remember { mutableStateOf<WorkoutPlanResponse?>(null) }
     var session by remember { mutableStateOf<SessionDraftState?>(null) }
     var sessionSaving by remember { mutableStateOf(false) }
     var sessionError by remember { mutableStateOf<String?>(null) }
@@ -218,7 +220,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     LaunchedEffect(screen, refreshPlans) {
         if (screen == TrainingScreen.ROUTINES) {
             plansLoading = true; plansError = null
-            runCatching { GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
+            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
             plansLoading = false
         }
     }
@@ -275,9 +277,9 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 saving = false
             }
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
-        TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, onStart = { plan ->
+        TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; screen = TrainingScreen.SESSION
-        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { screen = TrainingScreen.CATALOG })
+        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
         TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onStateChanged = { session = it }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null
