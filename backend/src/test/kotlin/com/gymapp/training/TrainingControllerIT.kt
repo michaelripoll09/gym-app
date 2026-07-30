@@ -14,6 +14,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.OffsetDateTime
+import java.time.LocalDate
 import java.util.UUID
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -22,6 +23,122 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
     fun seedExerciseFixtures() {
         seedExercise("00000000-0000-0000-0000-000000000001", "fixture-calisthenics", "Flexión de prueba", "CALISTHENICS")
         seedExercise("00000000-0000-0000-0000-000000000002", "fixture-bodybuilding", "Curl de prueba", "BODYBUILDING")
+    }
+
+    @BeforeEach
+    fun seedProgressExerciseFixtures() {
+        seedExercise("00000000-0000-0000-0000-000000000003", "fixture-progress-row", "Row test", "CALISTHENICS")
+        seedExercise("00000000-0000-0000-0000-000000000004", "fixture-progress-squat", "Squat test", "CALISTHENICS")
+    }
+
+    @Test
+    fun `lists a compatible curated plan and adopts an editable personal copy`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+
+        val listed = request("GET", "/api/v1/curated-plans", token, null)
+
+        assertEquals(HttpStatus.OK.value(), listed.statusCode())
+        val plans = json.readValue(listed.body(), List::class.java) as List<Map<String, Any>>
+        val plan = plans.single()
+        assertEquals("Base de calistenia", plan.getValue("name"))
+        assertEquals("Plan curado para principiante enfocado en ganar músculo.", plan.getValue("description"))
+        assertEquals("CALISTHENICS", plan.getValue("primaryProfile"))
+        assertEquals("BEGINNER", plan.getValue("experienceLevel"))
+        assertEquals("MUSCLE_GAIN", plan.getValue("goal"))
+        assertEquals(3, (plan.getValue("days") as List<*>).size)
+
+        val adopted = request("POST", "/api/v1/curated-plans/${plan.getValue("id")}/adopt", token, emptyMap<String, Any>())
+        val personal = request("GET", "/api/v1/workout-plans", token, null)
+
+        assertEquals(HttpStatus.CREATED.value(), adopted.statusCode())
+        assertEquals(1, (json.readValue(personal.body(), List::class.java) as List<*>).size)
+    }
+
+    @Test
+    fun `rejects adopting a curated plan that does not match the profile`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+
+        val response = request("POST", "/api/v1/curated-plans/starter-bodybuilding-beginner-muscle-gain/adopt", token, emptyMap<String, Any>())
+
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), response.statusCode())
+    }
+
+    @Test
+    fun `returns an empty weekly summary when the user has no active training`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+
+        val response = request("GET", "/api/v1/training-summary/weekly", token, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        val summary = body(response)
+        assertEquals(0, summary.getValue("completedSessions"))
+        assertEquals(0, summary.getValue("scheduledSessions"))
+        assertEquals(0, summary.getValue("adherencePercent"))
+        assertEquals(0.0, summary.getValue("volumeKg"))
+        assertEquals(null, summary["nextSession"])
+    }
+
+    @Test
+    fun `summarizes current week adherence volume and next session`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", token, mapOf("name" to "Semana activa", "days" to listOf(
+            mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 2, "minRepetitions" to 8, "maxRepetitions" to 8))),
+            mapOf("name" to "MiÃ©rcoles", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 2, "minRepetitions" to 8, "maxRepetitions" to 8))),
+        )))
+        val session = request("POST", "/api/v1/workout-plans/${body(plan).getValue("id")}/sessions", token, mapOf("sets" to listOf(
+            mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 50.0),
+            mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8),
+        )))
+        jdbc.update("update workout_sessions set started_at = ? where id = ?", OffsetDateTime.now(), UUID.fromString(body(session).getValue("id") as String))
+
+        val response = request("GET", "/api/v1/training-summary/weekly", token, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        val summary = body(response)
+        assertEquals(1, summary.getValue("completedSessions"))
+        assertEquals(2, summary.getValue("scheduledSessions"))
+        assertEquals(50, summary.getValue("adherencePercent"))
+        assertEquals(500.0, summary.getValue("volumeKg"))
+        assertEquals("Semana activa", (summary.getValue("nextSession") as Map<*, *>)["planName"])
+    }
+
+    @Test
+    fun `excludes volume from an archived plans session`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", token, mapOf("name" to "Archivada", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val planId = body(plan).getValue("id") as String
+        request("POST", "/api/v1/workout-plans/$planId/sessions", token, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 30.0))))
+        request("PUT", "/api/v1/workout-plans/$planId/archive", token, null)
+
+        val summary = body(request("GET", "/api/v1/training-summary/weekly", token, null))
+
+        assertEquals(0.0, summary.getValue("volumeKg"))
+    }
+
+    @Test
+    fun `returns increase maintain and reduce recommendations excluding archived routines`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exercises = listOf("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000004").map(UUID::fromString)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Progression", "days" to listOf(mapOf("name" to "Lunes", "exercises" to exercises.map { mapOf("exerciseId" to it.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12) }))))
+        val planId = body(plan).getValue("id") as String
+        val previous = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exercises[0].toString(), "repetitions" to 8, "loadKg" to 20.0), mapOf("exerciseId" to exercises[1].toString(), "repetitions" to 8, "loadKg" to 20.0), mapOf("exerciseId" to exercises[2].toString(), "repetitions" to 10, "loadKg" to 30.0))))
+        val latest = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exercises[0].toString(), "repetitions" to 10, "loadKg" to 20.0), mapOf("exerciseId" to exercises[1].toString(), "repetitions" to 8, "loadKg" to 22.0), mapOf("exerciseId" to exercises[2].toString(), "repetitions" to 8, "loadKg" to 30.0))))
+        jdbc.update("update workout_sessions set started_at = ? where id = ?", OffsetDateTime.parse("2026-07-28T10:00:00Z"), UUID.fromString(body(previous).getValue("id") as String))
+        jdbc.update("update workout_sessions set started_at = ? where id = ?", OffsetDateTime.parse("2026-07-29T10:00:00Z"), UUID.fromString(body(latest).getValue("id") as String))
+        val archived = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Archived", "days" to listOf(mapOf("name" to "Viernes", "exercises" to listOf(mapOf("exerciseId" to exercises[0].toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val archivedId = body(archived).getValue("id") as String
+        request("POST", "/api/v1/workout-plans/$archivedId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exercises[0].toString(), "repetitions" to 20, "loadKg" to 40.0))))
+        request("PUT", "/api/v1/workout-plans/$archivedId/archive", owner, null)
+
+        val response = request("GET", "/api/v1/training-progress/recommendations", owner, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        val recommendations = json.readValue(response.body(), List::class.java) as List<Map<String, Any>>
+        assertEquals(setOf("INCREASE", "MAINTAIN", "REDUCE"), recommendations.map { it.getValue("action") }.toSet())
+        assertEquals(false, recommendations.any { (it.getValue("latestLoadKg") as Number).toDouble() == 40.0 })
+        assertEquals(false, recommendations.any { (it.getValue("explanation") as String).isBlank() })
     }
 
     @Test

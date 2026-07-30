@@ -1,8 +1,16 @@
 package com.gymapp
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -32,8 +41,11 @@ import com.gymapp.catalog.ExerciseCatalogScreen
 import com.gymapp.catalog.ExerciseCatalogState
 import com.gymapp.catalog.failedCatalog
 import com.gymapp.catalog.loadedCatalog
+import com.gymapp.curated.CuratedPlansScreen
+import com.gymapp.curated.CuratedPlansState
 import com.gymapp.network.CreateWorkoutPlanRequest
 import com.gymapp.network.CreateWorkoutSessionRequest
+import com.gymapp.network.CuratedPlanResponse
 import com.gymapp.network.GymApi
 import com.gymapp.network.RegisterRequest
 import com.gymapp.network.TrainingProfileRequest
@@ -63,20 +75,33 @@ import com.gymapp.today.TodayTrainingState
 import com.gymapp.today.plansForToday
 import com.gymapp.today.spanishDayName
 import com.gymapp.today.todayLoadError
+import com.gymapp.summary.WeeklySummaryScreen
+import com.gymapp.summary.WeeklySummaryState
+import com.gymapp.progression.ProgressionScreen
+import com.gymapp.progression.ProgressionState
+import com.gymapp.reminders.ReminderScheduler
+import com.gymapp.reminders.ReminderScreen
+import com.gymapp.reminders.ReminderSettings
+import com.gymapp.reminders.ReminderStore
+import com.gymapp.reminders.ReminderDestination
+import com.gymapp.reminders.reminderDestination
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
 class MainActivity : ComponentActivity() {
+    private var openToday by mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AppFlow(TokenStore(this)) }
+        openToday = intent?.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false) == true
+        setContent { AppFlow(TokenStore(this), openToday, onTodayOpened = { openToday = false }) }
     }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openToday = intent.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false) }
 }
 
 @Composable
-private fun AppFlow(store: TokenStore) {
+private fun AppFlow(store: TokenStore, openToday: Boolean = false, onTodayOpened: () -> Unit = {}) {
     var token by remember { mutableStateOf(store.read()) }
     var recovery by remember { mutableStateOf<ProfileRecoveryState>(ProfileRecoveryState.Loading) }
     var recoveryAttempt by remember { mutableIntStateOf(0) }
@@ -90,7 +115,7 @@ private fun AppFlow(store: TokenStore) {
     when {
         token == null -> Access(store, onRegistered = { token = it }, onLoggedIn = { token = it })
         recovery is ProfileRecoveryState.Loading -> ProfileLoading()
-        recovery is ProfileRecoveryState.Existing -> TrainingHome(token.orEmpty(), (recovery as ProfileRecoveryState.Existing).primaryProfile, onUnauthorized = { store.clear(); token = null })
+        recovery is ProfileRecoveryState.Existing -> TrainingHome(token.orEmpty(), (recovery as ProfileRecoveryState.Existing).primaryProfile, openToday, onTodayOpened, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.NeedsOnboarding -> Onboarding(token.orEmpty(), onSaved = { profile -> recovery = ProfileRecoveryState.Existing(profile) }, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.Unauthorized -> LaunchedEffect(Unit) { store.clear(); token = null }
         recovery is ProfileRecoveryState.RetryableFailure -> ProfileRecoveryError { recoveryAttempt++ }
@@ -181,10 +206,11 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, PROGRESSION, SUMMARY, REMINDERS }
 
 @Composable
-private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
+private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
+    val context = LocalContext.current
     var screen by remember { mutableStateOf(TrainingScreen.CATALOG) }
     var activeProfile by remember { mutableStateOf(profile) }
     var catalog by remember { mutableStateOf(ExerciseCatalogState()) }
@@ -208,11 +234,25 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var progression by remember { mutableStateOf(ProgressionState()) }
+    var refreshProgression by remember { mutableIntStateOf(0) }
+    var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
+    var refreshWeeklySummary by remember { mutableIntStateOf(0) }
+    var curatedPlans by remember { mutableStateOf(CuratedPlansState()) }
+    var refreshCuratedPlans by remember { mutableIntStateOf(0) }
+    var selectedCuratedPlan by remember { mutableStateOf<CuratedPlanResponse?>(null) }
+    var adoptingCuratedPlan by remember { mutableStateOf(false) }
+    var curatedPlanError by remember { mutableStateOf<String?>(null) }
     var editor by remember { mutableStateOf<ProfileEditorState>(ProfileEditorState.Loading) }
     var editorAttempt by remember { mutableIntStateOf(0) }
     var editorSaving by remember { mutableStateOf(false) }
     var editorSaveError by remember { mutableStateOf<String?>(null) }
+    var reminderSettings by remember { mutableStateOf(ReminderStore(context).readSettings()) }
+    var notificationPermissionGranted by remember { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notificationPermissionGranted = it }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(openToday) { if (reminderDestination(openToday) == ReminderDestination.TODAY) { screen = TrainingScreen.TODAY; onTodayOpened() } }
 
     LaunchedEffect(activeProfile) {
         runCatching { GymApi.create().exercises(activeProfile) }
@@ -229,7 +269,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     LaunchedEffect(screen, refreshPlans) {
         if (screen == TrainingScreen.ROUTINES) {
             plansLoading = true; plansError = null
-            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
+            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it; if (!archivedPlans) ReminderScheduler.reschedule(context, it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
             plansLoading = false
         }
     }
@@ -261,9 +301,33 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
         }
     }
+    LaunchedEffect(screen, refreshWeeklySummary) {
+        if (screen == TrainingScreen.SUMMARY) {
+            weeklySummary = WeeklySummaryState(loading = true)
+            runCatching { GymApi.create().weeklyTrainingSummary("Bearer $token") }
+                .onSuccess { weeklySummary = WeeklySummaryState(summary = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else weeklySummary = WeeklySummaryState(error = "No pudimos cargar tu resumen semanal") }
+        }
+    }
+    LaunchedEffect(screen, refreshProgression) { if (screen == TrainingScreen.PROGRESSION) { progression = ProgressionState(loading = true); runCatching { GymApi.create().progressionRecommendations("Bearer $token") }.onSuccess { progression = ProgressionState(items = it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else progression = ProgressionState(error = "No pudimos cargar tu progresión") } } }
+    LaunchedEffect(screen, refreshCuratedPlans) {
+        if (screen == TrainingScreen.CURATED) {
+            curatedPlans = CuratedPlansState(loading = true)
+            runCatching { GymApi.create().curatedPlans("Bearer $token") }
+                .onSuccess { curatedPlans = CuratedPlansState(plans = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { curatedPlans = CuratedPlansState(error = "No pudimos cargar los planes recomendados") } }
+        }
+    }
 
     when (screen) {
-        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowProfile = { screen = TrainingScreen.PROFILE })
+        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowCuratedPlans = { selectedCuratedPlan = null; curatedPlanError = null; screen = TrainingScreen.CURATED }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowSummary = { screen = TrainingScreen.SUMMARY }, onShowProfile = { screen = TrainingScreen.PROFILE })
+        TrainingScreen.CURATED -> CuratedPlansScreen(curatedPlans, selectedCuratedPlan, adoptingCuratedPlan, curatedPlanError, onSelect = { selectedCuratedPlan = it; curatedPlanError = null }, onAdopt = { plan -> scope.launch {
+            adoptingCuratedPlan = true; curatedPlanError = null
+            runCatching { GymApi.create().adoptCuratedPlan("Bearer $token", plan.id) }
+                .onSuccess { selectedCuratedPlan = null; refreshPlans++; screen = TrainingScreen.ROUTINES }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else curatedPlanError = "No pudimos crear tu rutina" }
+            adoptingCuratedPlan = false
+        } }, onRetry = { refreshCuratedPlans++ }, onBack = { if (selectedCuratedPlan != null) selectedCuratedPlan = null else screen = TrainingScreen.CATALOG })
         TrainingScreen.PROFILE -> when (val currentEditor = editor) {
             ProfileEditorState.Loading -> ProfileLoading()
             ProfileEditorState.Unauthorized -> LaunchedEffect(Unit) { onUnauthorized() }
@@ -300,7 +364,12 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
         TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; sessionReturnScreen = TrainingScreen.ROUTINES; screen = TrainingScreen.SESSION
-        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        TrainingScreen.REMINDERS -> ReminderScreen(reminderSettings, notificationPermissionGranted, onSettingsChanged = { settings ->
+            ReminderStore(context).saveSettings(settings); reminderSettings = settings; ReminderScheduler.reschedule(context, plans)
+        }, onRequestPermission = { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }, onOpenSettings = {
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+        }, onBack = { screen = TrainingScreen.ROUTINES })
         TrainingScreen.TODAY -> TodayTrainingScreen(today, spanishDayName(LocalDate.now().dayOfWeek), onStart = { plan ->
             session = SessionDraftState.from(plan, spanishDayName(LocalDate.now().dayOfWeek)); sessionError = null; sessionReturnScreen = TrainingScreen.TODAY; screen = TrainingScreen.SESSION
         }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onRetry = { refreshToday++ }, onBack = { screen = TrainingScreen.CATALOG })
@@ -309,7 +378,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 sessionSaving = true; sessionError = null
                 val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) })
                 runCatching { GymApi.create().createWorkoutSession("Bearer $token", currentSession.planId, request) }.onSuccess {
-                    refreshPlans++; refreshToday++; screen = sessionReturnScreen
+                    refreshPlans++; refreshToday++; refreshWeeklySummary++; screen = sessionReturnScreen
                 }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { sessionError = it.message ?: "No fue posible guardar la sesión" } }
                 sessionSaving = false
             }
@@ -317,6 +386,8 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESSION -> ProgressionScreen(progression, onRetry = { refreshProgression++ }, onBack = { screen = TrainingScreen.PROGRESS })
+        TrainingScreen.SUMMARY -> WeeklySummaryScreen(weeklySummary, onRetry = { refreshWeeklySummary++ }, onBack = { screen = TrainingScreen.CATALOG })
     }
 }

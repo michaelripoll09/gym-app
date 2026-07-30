@@ -86,12 +86,13 @@ private fun RowScope.NumberField(label: String, value: Int, onValueChange: (Int)
 }
 
 @Composable
-fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error: String?, archived: Boolean, pendingArchive: WorkoutPlanResponse?, onStart: (WorkoutPlanResponse) -> Unit, onEdit: (WorkoutPlanResponse) -> Unit, onArchive: (WorkoutPlanResponse) -> Unit, onConfirmArchive: () -> Unit, onCancelArchive: () -> Unit, onRestore: (WorkoutPlanResponse) -> Unit, onShowArchived: () -> Unit, onShowActive: () -> Unit, onHistory: () -> Unit, onProgress: () -> Unit, onBack: () -> Unit) {
+fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error: String?, archived: Boolean, pendingArchive: WorkoutPlanResponse?, onStart: (WorkoutPlanResponse) -> Unit, onEdit: (WorkoutPlanResponse) -> Unit, onArchive: (WorkoutPlanResponse) -> Unit, onConfirmArchive: () -> Unit, onCancelArchive: () -> Unit, onRestore: (WorkoutPlanResponse) -> Unit, onShowArchived: () -> Unit, onShowActive: () -> Unit, onHistory: () -> Unit, onProgress: () -> Unit, onShowReminders: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(if (archived) "Rutinas archivadas" else "Mis rutinas", color = lime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver al catálogo") } }
         item { Button(onClick = onHistory) { Text("Historial") } }
         item { Button(onClick = onProgress) { Text("Progreso") } }
+        if (!archived) item { Button(onClick = onShowReminders) { Text("Recordatorios") } }
         item { Button(onClick = if (archived) onShowActive else onShowArchived) { Text(if (archived) "Ver activas" else "Ver archivadas") } }
         pendingArchive?.let { plan -> item { Text("¿Archivar ${plan.name}?"); Button(onClick = onConfirmArchive) { Text("Confirmar archivado") }; Button(onClick = onCancelArchive) { Text("Cancelar") } } }
         if (loading) item { Text("Cargando rutinas…", color = Color.LightGray) }

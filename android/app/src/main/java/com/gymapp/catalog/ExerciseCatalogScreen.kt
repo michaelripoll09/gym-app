@@ -14,16 +14,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun ExerciseCatalogScreen(state: ExerciseCatalogState, onCreateRoutine: () -> Unit, onShowRoutines: () -> Unit, onShowToday: () -> Unit, onShowProfile: () -> Unit) {
+fun ExerciseCatalogScreen(state: ExerciseCatalogState, onCreateRoutine: () -> Unit, onShowCuratedPlans: () -> Unit, onShowRoutines: () -> Unit, onShowToday: () -> Unit, onShowSummary: () -> Unit, onShowProfile: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Tus ejercicios", color = Color(0xFFB9F227), fontSize = 30.sp)
             Spacer(Modifier.height(12.dp))
             Button(onClick = onCreateRoutine) { Text("Crear rutina") }
             Spacer(Modifier.height(8.dp))
+            Button(onClick = onShowCuratedPlans) { Text("Planes recomendados") }
+            Spacer(Modifier.height(8.dp))
             Button(onClick = onShowRoutines) { Text("Mis rutinas") }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onShowToday) { Text("Entrenamiento de hoy") }
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onShowSummary) { Text("Resumen semanal") }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onShowProfile) { Text("Mi perfil") }
         }
