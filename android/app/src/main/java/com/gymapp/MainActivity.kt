@@ -58,7 +58,13 @@ import com.gymapp.sessions.SessionDraftState
 import com.gymapp.sessions.SessionHistoryScreen
 import com.gymapp.sessions.SessionHistoryState
 import com.gymapp.sessions.SessionScreen
+import com.gymapp.today.TodayTrainingScreen
+import com.gymapp.today.TodayTrainingState
+import com.gymapp.today.plansForToday
+import com.gymapp.today.spanishDayName
+import com.gymapp.today.todayLoadError
 import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -175,7 +181,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, PROFILE, EDITOR, ROUTINES, SESSION, HISTORY, PROGRESS }
+private enum class TrainingScreen { CATALOG, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
@@ -192,7 +198,10 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var refreshPlans by remember { mutableIntStateOf(0) }
     var archivedPlans by remember { mutableStateOf(false) }
     var pendingArchive by remember { mutableStateOf<WorkoutPlanResponse?>(null) }
+    var today by remember { mutableStateOf(TodayTrainingState()) }
+    var refreshToday by remember { mutableIntStateOf(0) }
     var session by remember { mutableStateOf<SessionDraftState?>(null) }
+    var sessionReturnScreen by remember { mutableStateOf(TrainingScreen.ROUTINES) }
     var sessionSaving by remember { mutableStateOf(false) }
     var sessionError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(SessionHistoryState()) }
@@ -224,6 +233,18 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
             plansLoading = false
         }
     }
+    LaunchedEffect(screen, refreshToday) {
+        if (screen == TrainingScreen.TODAY) {
+            today = today.copy(loading = true, error = null)
+            val day = spanishDayName(LocalDate.now().dayOfWeek)
+            runCatching { GymApi.create().workoutPlans("Bearer $token") }
+                .onSuccess { today = TodayTrainingState(loading = false, plans = plansForToday(it, day)) }
+                .onFailure {
+                    if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
+                    else today = todayLoadError(today.plans)
+                }
+        }
+    }
     LaunchedEffect(screen, refreshHistory) {
         if (screen == TrainingScreen.HISTORY) {
             history = history.copy(loading = true, error = null, selected = null)
@@ -242,7 +263,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     }
 
     when (screen) {
-        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowProfile = { screen = TrainingScreen.PROFILE })
+        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowProfile = { screen = TrainingScreen.PROFILE })
         TrainingScreen.PROFILE -> when (val currentEditor = editor) {
             ProfileEditorState.Loading -> ProfileLoading()
             ProfileEditorState.Unauthorized -> LaunchedEffect(Unit) { onUnauthorized() }
@@ -278,18 +299,21 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
             }
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
         TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, onStart = { plan ->
-            session = SessionDraftState.from(plan); sessionError = null; screen = TrainingScreen.SESSION
+            session = SessionDraftState.from(plan); sessionError = null; sessionReturnScreen = TrainingScreen.ROUTINES; screen = TrainingScreen.SESSION
         }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        TrainingScreen.TODAY -> TodayTrainingScreen(today, spanishDayName(LocalDate.now().dayOfWeek), onStart = { plan ->
+            session = SessionDraftState.from(plan); sessionError = null; sessionReturnScreen = TrainingScreen.TODAY; screen = TrainingScreen.SESSION
+        }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onRetry = { refreshToday++ }, onBack = { screen = TrainingScreen.CATALOG })
         TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onStateChanged = { session = it }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null
                 val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt()) })
                 runCatching { GymApi.create().createWorkoutSession("Bearer $token", currentSession.planId, request) }.onSuccess {
-                    refreshPlans++; screen = TrainingScreen.ROUTINES
+                    refreshPlans++; refreshToday++; screen = sessionReturnScreen
                 }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { sessionError = it.message ?: "No fue posible guardar la sesión" } }
                 sessionSaving = false
             }
-        }, onBack = { screen = TrainingScreen.ROUTINES }) }
+        }, onBack = { screen = sessionReturnScreen }) }
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
