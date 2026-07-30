@@ -1,8 +1,16 @@
 package com.gymapp
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -70,20 +79,29 @@ import com.gymapp.summary.WeeklySummaryScreen
 import com.gymapp.summary.WeeklySummaryState
 import com.gymapp.progression.ProgressionScreen
 import com.gymapp.progression.ProgressionState
+import com.gymapp.reminders.ReminderScheduler
+import com.gymapp.reminders.ReminderScreen
+import com.gymapp.reminders.ReminderSettings
+import com.gymapp.reminders.ReminderStore
+import com.gymapp.reminders.ReminderDestination
+import com.gymapp.reminders.reminderDestination
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
 class MainActivity : ComponentActivity() {
+    private var openToday by mutableStateOf(false)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AppFlow(TokenStore(this)) }
+        openToday = intent?.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false) == true
+        setContent { AppFlow(TokenStore(this), openToday, onTodayOpened = { openToday = false }) }
     }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openToday = intent.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false) }
 }
 
 @Composable
-private fun AppFlow(store: TokenStore) {
+private fun AppFlow(store: TokenStore, openToday: Boolean = false, onTodayOpened: () -> Unit = {}) {
     var token by remember { mutableStateOf(store.read()) }
     var recovery by remember { mutableStateOf<ProfileRecoveryState>(ProfileRecoveryState.Loading) }
     var recoveryAttempt by remember { mutableIntStateOf(0) }
@@ -97,7 +115,7 @@ private fun AppFlow(store: TokenStore) {
     when {
         token == null -> Access(store, onRegistered = { token = it }, onLoggedIn = { token = it })
         recovery is ProfileRecoveryState.Loading -> ProfileLoading()
-        recovery is ProfileRecoveryState.Existing -> TrainingHome(token.orEmpty(), (recovery as ProfileRecoveryState.Existing).primaryProfile, onUnauthorized = { store.clear(); token = null })
+        recovery is ProfileRecoveryState.Existing -> TrainingHome(token.orEmpty(), (recovery as ProfileRecoveryState.Existing).primaryProfile, openToday, onTodayOpened, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.NeedsOnboarding -> Onboarding(token.orEmpty(), onSaved = { profile -> recovery = ProfileRecoveryState.Existing(profile) }, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.Unauthorized -> LaunchedEffect(Unit) { store.clear(); token = null }
         recovery is ProfileRecoveryState.RetryableFailure -> ProfileRecoveryError { recoveryAttempt++ }
@@ -188,10 +206,11 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, PROGRESSION, SUMMARY }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, PROGRESSION, SUMMARY, REMINDERS }
 
 @Composable
-private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
+private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
+    val context = LocalContext.current
     var screen by remember { mutableStateOf(TrainingScreen.CATALOG) }
     var activeProfile by remember { mutableStateOf(profile) }
     var catalog by remember { mutableStateOf(ExerciseCatalogState()) }
@@ -228,7 +247,12 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var editorAttempt by remember { mutableIntStateOf(0) }
     var editorSaving by remember { mutableStateOf(false) }
     var editorSaveError by remember { mutableStateOf<String?>(null) }
+    var reminderSettings by remember { mutableStateOf(ReminderStore(context).readSettings()) }
+    var notificationPermissionGranted by remember { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notificationPermissionGranted = it }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(openToday) { if (reminderDestination(openToday) == ReminderDestination.TODAY) { screen = TrainingScreen.TODAY; onTodayOpened() } }
 
     LaunchedEffect(activeProfile) {
         runCatching { GymApi.create().exercises(activeProfile) }
@@ -245,7 +269,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     LaunchedEffect(screen, refreshPlans) {
         if (screen == TrainingScreen.ROUTINES) {
             plansLoading = true; plansError = null
-            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
+            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it; if (!archivedPlans) ReminderScheduler.reschedule(context, it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
             plansLoading = false
         }
     }
@@ -340,7 +364,12 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
         TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; sessionReturnScreen = TrainingScreen.ROUTINES; screen = TrainingScreen.SESSION
-        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        TrainingScreen.REMINDERS -> ReminderScreen(reminderSettings, notificationPermissionGranted, onSettingsChanged = { settings ->
+            ReminderStore(context).saveSettings(settings); reminderSettings = settings; ReminderScheduler.reschedule(context, plans)
+        }, onRequestPermission = { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }, onOpenSettings = {
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+        }, onBack = { screen = TrainingScreen.ROUTINES })
         TrainingScreen.TODAY -> TodayTrainingScreen(today, spanishDayName(LocalDate.now().dayOfWeek), onStart = { plan ->
             session = SessionDraftState.from(plan, spanishDayName(LocalDate.now().dayOfWeek)); sessionError = null; sessionReturnScreen = TrainingScreen.TODAY; screen = TrainingScreen.SESSION
         }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onRetry = { refreshToday++ }, onBack = { screen = TrainingScreen.CATALOG })
