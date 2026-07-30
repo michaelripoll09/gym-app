@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: ${GYM_DATABASE_URL:jdbc:postgresql://localhost:5432/gym_app}
+    username: ${GYM_DATABASE_USERNAME:gym_app}
+    password: ${GYM_DATABASE_PASSWORD:gym_app}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+gym-app:
+  auth:
+    jwt-secret: ${GYM_JWT_SECRET}
