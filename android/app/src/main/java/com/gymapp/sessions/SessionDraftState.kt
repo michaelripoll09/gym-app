@@ -16,10 +16,10 @@ data class SessionDraftState(val planId: String, val planName: String, val sets:
     }
 
     companion object {
-        fun from(plan: WorkoutPlanResponse) = SessionDraftState(
+        fun from(plan: WorkoutPlanResponse, day: String? = null) = SessionDraftState(
             planId = plan.id,
             planName = plan.name,
-            sets = plan.days.flatMap { day -> day.exercises.flatMap { exercise -> (1..exercise.sets).map { number -> SessionSetDraft(exercise.exerciseId, exercise.name, number) } } }
+            sets = plan.days.filter { day == null || it.name == day }.flatMap { currentDay -> currentDay.exercises.flatMap { exercise -> (1..exercise.sets).map { number -> SessionSetDraft(exercise.exerciseId, exercise.name, number) } } }
         )
     }
 }

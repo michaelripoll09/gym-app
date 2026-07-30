@@ -22,6 +22,17 @@ class SessionDraftStateTest {
     }
 
     @Test
+    fun `creates a daily session only with the selected days sets`() {
+        val multiDay = plan.copy(days = plan.days + WorkoutPlanDayResponse("Jueves", listOf(WorkoutPlanExerciseResponse("exercise-2", "Remo", 3, 8, 10, 60))))
+
+        val daily = SessionDraftState.from(multiDay, "Jueves")
+        val complete = SessionDraftState.from(multiDay)
+
+        assertEquals(listOf("Remo", "Remo", "Remo"), daily.sets.map { it.exerciseName })
+        assertEquals(5, complete.sets.size)
+    }
+
+    @Test
     fun `rejects empty and non positive repetitions`() {
         val state = SessionDraftState.from(plan)
         val invalid = state.updateRepetitions(0, "0")
