@@ -33,6 +33,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class WorkoutSessionResponse(val id: String, val planName: String, val startedAt: String, val sets: List<SessionSetResponse>)
 @Serializable data class NextWeeklySessionResponse(val planName: String, val dayName: String)
 @Serializable data class WeeklyTrainingSummaryResponse(val completedSessions: Int, val scheduledSessions: Int, val adherencePercent: Int, val volumeKg: Double, val nextSession: NextWeeklySessionResponse? = null)
+@Serializable data class ExerciseProgressionResponse(val exerciseName: String, val previousRepetitions: Int, val latestRepetitions: Int, val previousLoadKg: Double, val latestLoadKg: Double, val action: String, val explanation: String)
 
 interface GymApi {
     @POST("auth/register") suspend fun register(@Body request: RegisterRequest): AuthResponse
@@ -51,6 +52,7 @@ interface GymApi {
     @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): IdResponse
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
     @GET("training-summary/weekly") suspend fun weeklyTrainingSummary(@Header("Authorization") authorization: String): WeeklyTrainingSummaryResponse
+    @GET("training-progress/recommendations") suspend fun progressionRecommendations(@Header("Authorization") authorization: String): List<ExerciseProgressionResponse>
     companion object {
         fun create(): GymApi = Retrofit.Builder().baseUrl("${BuildConfig.API_BASE_URL}/").addConverterFactory(kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType())).build().create(GymApi::class.java)
     }

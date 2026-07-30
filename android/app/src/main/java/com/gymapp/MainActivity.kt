@@ -68,6 +68,8 @@ import com.gymapp.today.spanishDayName
 import com.gymapp.today.todayLoadError
 import com.gymapp.summary.WeeklySummaryScreen
 import com.gymapp.summary.WeeklySummaryState
+import com.gymapp.progression.ProgressionScreen
+import com.gymapp.progression.ProgressionState
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.launch
@@ -186,7 +188,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, SUMMARY }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, PROGRESSION, SUMMARY }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
@@ -213,6 +215,8 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var progression by remember { mutableStateOf(ProgressionState()) }
+    var refreshProgression by remember { mutableIntStateOf(0) }
     var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
     var refreshWeeklySummary by remember { mutableIntStateOf(0) }
     var curatedPlans by remember { mutableStateOf(CuratedPlansState()) }
@@ -281,6 +285,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else weeklySummary = WeeklySummaryState(error = "No pudimos cargar tu resumen semanal") }
         }
     }
+    LaunchedEffect(screen, refreshProgression) { if (screen == TrainingScreen.PROGRESSION) { progression = ProgressionState(loading = true); runCatching { GymApi.create().progressionRecommendations("Bearer $token") }.onSuccess { progression = ProgressionState(items = it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else progression = ProgressionState(error = "No pudimos cargar tu progresión") } } }
     LaunchedEffect(screen, refreshCuratedPlans) {
         if (screen == TrainingScreen.CURATED) {
             curatedPlans = CuratedPlansState(loading = true)
@@ -352,7 +357,8 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESSION -> ProgressionScreen(progression, onRetry = { refreshProgression++ }, onBack = { screen = TrainingScreen.PROGRESS })
         TrainingScreen.SUMMARY -> WeeklySummaryScreen(weeklySummary, onRetry = { refreshWeeklySummary++ }, onBack = { screen = TrainingScreen.CATALOG })
     }
 }

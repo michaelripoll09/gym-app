@@ -21,11 +21,12 @@ private val progressLime = Color(0xFFB9F227)
 private val progressCard = Color(0xFF1C2022)
 
 @Composable
-fun TrainingProgressScreen(state: TrainingProgressState, onRetry: () -> Unit, onHistory: () -> Unit, onBack: () -> Unit) {
+fun TrainingProgressScreen(state: TrainingProgressState, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Progreso", color = progressLime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver a mis rutinas") } }
         item { Button(onClick = onHistory) { Text("Ver historial") } }
+        item { Button(onClick = onProgression) { Text("Ver progresión guiada") } }
         when (state.content()) {
             ProgressContent.LOADING -> item { Text("Calculando tu progreso…", color = Color.LightGray) }
             ProgressContent.ERROR -> {
