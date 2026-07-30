@@ -15,9 +15,23 @@ data class ProgressSummary(
     val totalRepetitions: Int = 0,
 )
 
+data class ExerciseLoadProgress(val exerciseName: String, val latestLoadKg: Double, val maximumLoadKg: Double)
+
+fun exerciseLoadProgress(sessions: List<WorkoutSessionResponse>): List<ExerciseLoadProgress> = sessions
+    .flatMap { session -> session.sets.mapNotNull { set -> set.loadKg?.let { Triple(session, set.exerciseName, it) } } }
+    .groupBy { it.second }
+    .map { (name, entries) ->
+        val recent = entries.maxBy { runCatching { parseStartedAt(it.first.startedAt) }.getOrDefault(Instant.EPOCH) }
+        ExerciseLoadProgress(name, recent.third, entries.maxOf { it.third }) to
+            runCatching { parseStartedAt(recent.first.startedAt) }.getOrDefault(Instant.EPOCH)
+    }
+    .sortedWith(compareByDescending<Pair<ExerciseLoadProgress, Instant>> { it.second }.thenBy { it.first.exerciseName })
+    .map { it.first }
+
 data class TrainingProgressState(
     val recentSessions: List<WorkoutSessionResponse> = emptyList(),
     val summary: ProgressSummary = ProgressSummary(),
+    val exerciseLoads: List<ExerciseLoadProgress> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
 ) {
@@ -40,6 +54,7 @@ data class TrainingProgressState(
                     registeredSets = recent.sumOf { it.sets.size },
                     totalRepetitions = recent.sumOf { session -> session.sets.sumOf { it.repetitions } },
                 ),
+                exerciseLoads = exerciseLoadProgress(sessions),
             )
         }
     }

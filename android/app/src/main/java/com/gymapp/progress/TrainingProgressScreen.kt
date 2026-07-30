@@ -44,6 +44,17 @@ fun TrainingProgressScreen(state: TrainingProgressState, onRetry: () -> Unit, on
                         }
                     }
                 }
+                item { Text("Por ejercicio", color = Color.White, fontSize = 20.sp) }
+                if (state.exerciseLoads.isEmpty()) item { Text("Aún no tienes cargas registradas por ejercicio.", color = Color.LightGray) }
+                items(state.exerciseLoads, key = { it.exerciseName }) { progress ->
+                    Card(colors = CardDefaults.cardColors(containerColor = progressCard), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(progress.exerciseName, color = Color.White, fontSize = 18.sp)
+                            Text("Última carga: ${progress.latestLoadKg} kg", color = Color.LightGray)
+                            Text("Carga máxima: ${progress.maximumLoadKg} kg", color = Color.LightGray)
+                        }
+                    }
+                }
                 item { Text("Sesiones recientes", color = Color.White, fontSize = 20.sp) }
                 items(state.recentSessions, key = { it.id }) { session ->
                     Card(colors = CardDefaults.cardColors(containerColor = progressCard), modifier = Modifier.fillMaxWidth()) {
