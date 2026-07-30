@@ -26,6 +26,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class WorkoutPlanExerciseResponse(val exerciseId: String, val name: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 @Serializable data class WorkoutPlanDayResponse(val name: String, val exercises: List<WorkoutPlanExerciseResponse>)
 @Serializable data class WorkoutPlanResponse(val id: String, val name: String, val days: List<WorkoutPlanDayResponse>)
+@Serializable data class CuratedPlanResponse(val id: String, val name: String, val description: String, val primaryProfile: String, val experienceLevel: String, val goal: String, val days: List<WorkoutPlanDayResponse>)
 @Serializable data class SetLogRequest(val exerciseId: String, val repetitions: Int, val loadKg: Double? = null)
 @Serializable data class CreateWorkoutSessionRequest(val sets: List<SetLogRequest>)
 @Serializable data class SessionSetResponse(val exerciseName: String, val repetitions: Int, val loadKg: Double? = null)
@@ -37,6 +38,8 @@ interface GymApi {
     @PUT("me/training-profile") suspend fun saveProfile(@Header("Authorization") authorization: String, @Body request: TrainingProfileRequest)
     @GET("me/training-profile") suspend fun trainingProfile(@Header("Authorization") authorization: String): TrainingProfileResponse
     @GET("exercises") suspend fun exercises(@Query("profile") profile: String): List<ExerciseResponse>
+    @GET("curated-plans") suspend fun curatedPlans(@Header("Authorization") authorization: String): List<CuratedPlanResponse>
+    @POST("curated-plans/{planId}/adopt") suspend fun adoptCuratedPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String): IdResponse
     @POST("workout-plans") suspend fun createWorkoutPlan(@Header("Authorization") authorization: String, @Body request: CreateWorkoutPlanRequest): IdResponse
     @PUT("workout-plans/{planId}") suspend fun updateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutPlanRequest)
     @GET("workout-plans") suspend fun workoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>

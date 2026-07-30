@@ -32,8 +32,11 @@ import com.gymapp.catalog.ExerciseCatalogScreen
 import com.gymapp.catalog.ExerciseCatalogState
 import com.gymapp.catalog.failedCatalog
 import com.gymapp.catalog.loadedCatalog
+import com.gymapp.curated.CuratedPlansScreen
+import com.gymapp.curated.CuratedPlansState
 import com.gymapp.network.CreateWorkoutPlanRequest
 import com.gymapp.network.CreateWorkoutSessionRequest
+import com.gymapp.network.CuratedPlanResponse
 import com.gymapp.network.GymApi
 import com.gymapp.network.RegisterRequest
 import com.gymapp.network.TrainingProfileRequest
@@ -181,7 +184,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> Unit) {
@@ -208,6 +211,11 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var curatedPlans by remember { mutableStateOf(CuratedPlansState()) }
+    var refreshCuratedPlans by remember { mutableIntStateOf(0) }
+    var selectedCuratedPlan by remember { mutableStateOf<CuratedPlanResponse?>(null) }
+    var adoptingCuratedPlan by remember { mutableStateOf(false) }
+    var curatedPlanError by remember { mutableStateOf<String?>(null) }
     var editor by remember { mutableStateOf<ProfileEditorState>(ProfileEditorState.Loading) }
     var editorAttempt by remember { mutableIntStateOf(0) }
     var editorSaving by remember { mutableStateOf(false) }
@@ -261,9 +269,24 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
         }
     }
+    LaunchedEffect(screen, refreshCuratedPlans) {
+        if (screen == TrainingScreen.CURATED) {
+            curatedPlans = CuratedPlansState(loading = true)
+            runCatching { GymApi.create().curatedPlans("Bearer $token") }
+                .onSuccess { curatedPlans = CuratedPlansState(plans = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { curatedPlans = CuratedPlansState(error = "No pudimos cargar los planes recomendados") } }
+        }
+    }
 
     when (screen) {
-        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowProfile = { screen = TrainingScreen.PROFILE })
+        TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowCuratedPlans = { selectedCuratedPlan = null; curatedPlanError = null; screen = TrainingScreen.CURATED }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowProfile = { screen = TrainingScreen.PROFILE })
+        TrainingScreen.CURATED -> CuratedPlansScreen(curatedPlans, selectedCuratedPlan, adoptingCuratedPlan, curatedPlanError, onSelect = { selectedCuratedPlan = it; curatedPlanError = null }, onAdopt = { plan -> scope.launch {
+            adoptingCuratedPlan = true; curatedPlanError = null
+            runCatching { GymApi.create().adoptCuratedPlan("Bearer $token", plan.id) }
+                .onSuccess { selectedCuratedPlan = null; refreshPlans++; screen = TrainingScreen.ROUTINES }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else curatedPlanError = "No pudimos crear tu rutina" }
+            adoptingCuratedPlan = false
+        } }, onRetry = { refreshCuratedPlans++ }, onBack = { if (selectedCuratedPlan != null) selectedCuratedPlan = null else screen = TrainingScreen.CATALOG })
         TrainingScreen.PROFILE -> when (val currentEditor = editor) {
             ProfileEditorState.Loading -> ProfileLoading()
             ProfileEditorState.Unauthorized -> LaunchedEffect(Unit) { onUnauthorized() }
