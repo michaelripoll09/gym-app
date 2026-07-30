@@ -38,8 +38,20 @@ class TrainingService(private val jdbc: JdbcTemplate) {
 
     @Transactional fun createPlan(userId: UUID, request: CreateWorkoutPlanRequest): UUID {
         require(request.name.isNotBlank() && request.days.isNotEmpty())
-        val profile = jdbc.queryForObject("select primary_profile from training_profiles where user_id = ?", String::class.java, userId)
+        val profile = jdbc.queryForObject("select primary_profile from training_profiles where user_id = ?", String::class.java, userId) ?: throw IllegalArgumentException()
         val planId = UUID.randomUUID(); jdbc.update("insert into workout_plans (id, user_id, name) values (?, ?, ?)", planId, userId, request.name)
+        writePlanDays(planId, request, profile)
+        return planId
+    }
+    @Transactional fun updatePlan(userId: UUID, planId: UUID, request: CreateWorkoutPlanRequest) {
+        if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
+        require(request.name.isNotBlank() && request.days.isNotEmpty())
+        val profile = jdbc.queryForObject("select primary_profile from training_profiles where user_id = ?", String::class.java, userId) ?: throw IllegalArgumentException()
+        jdbc.update("update workout_plans set name=? where id=?", request.name, planId)
+        jdbc.update("delete from workout_plan_days where plan_id=?", planId)
+        writePlanDays(planId, request, profile)
+    }
+    private fun writePlanDays(planId: UUID, request: CreateWorkoutPlanRequest, profile: String) {
         request.days.forEachIndexed { position, day ->
             val dayId = UUID.randomUUID(); jdbc.update("insert into workout_plan_days (id, plan_id, name, position) values (?, ?, ?, ?)", dayId, planId, day.name, position)
             day.exercises.forEach { exercise ->
@@ -48,7 +60,7 @@ class TrainingService(private val jdbc: JdbcTemplate) {
                 require(jdbc.queryForObject("select count(*) from exercises e join exercise_training_profiles p on p.exercise_id=e.id where e.id=? and e.published=true and p.profile_code=?", Int::class.java, exercise.exerciseId, profile) == 1)
                 jdbc.update("insert into workout_plan_exercises (id, day_id, exercise_id, sets, min_repetitions, max_repetitions, rest_seconds) values (?, ?, ?, ?, ?, ?, ?)", UUID.randomUUID(), dayId, exercise.exerciseId, exercise.sets, exercise.minRepetitions, exercise.maxRepetitions, restSeconds)
             }
-        }; return planId
+        }
     }
     @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): UUID {
         if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()

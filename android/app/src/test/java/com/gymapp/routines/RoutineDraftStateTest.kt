@@ -1,10 +1,21 @@
 package com.gymapp.routines
 
 import com.gymapp.network.ExerciseResponse
+import com.gymapp.network.WorkoutPlanDayResponse
+import com.gymapp.network.WorkoutPlanExerciseResponse
+import com.gymapp.network.WorkoutPlanResponse
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class RoutineDraftStateTest {
+    @Test
+    fun `loads an existing plan into the routine editor draft`() {
+        val draft = RoutineDraftState.from(WorkoutPlanResponse("plan-1", "Fuerza", listOf(WorkoutPlanDayResponse("Lunes", listOf(WorkoutPlanExerciseResponse("exercise-1", "Sentadilla", 4, 8, 8, 90))))))
+
+        assertEquals("Fuerza", draft.name)
+        assertEquals(setOf("Lunes"), draft.scheduledDays)
+        assertEquals(4, draft.exercises.single().sets)
+    }
     @Test
     fun `requires a name and at least one exercise before saving`() {
         val empty = RoutineDraftState()

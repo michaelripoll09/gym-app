@@ -18,6 +18,32 @@ import java.util.UUID
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired private val jdbc: JdbcTemplate, @LocalServerPort private val port: Int) {
     @Test
+    fun `updates an owners workout plan without creating another`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val created = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Original", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val planId = body(created).getValue("id") as String
+
+        val updated = request("PUT", "/api/v1/workout-plans/$planId", owner, mapOf("name" to "Actualizada", "days" to listOf(mapOf("name" to "Viernes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 4, "minRepetitions" to 12, "maxRepetitions" to 12, "restSeconds" to 90))))))
+        val listed = request("GET", "/api/v1/workout-plans", owner, null)
+
+        assertEquals(HttpStatus.NO_CONTENT.value(), updated.statusCode())
+        val plans = json.readValue(listed.body(), List::class.java) as List<Map<String, Any>>
+        assertEquals(listOf("Actualizada"), plans.map { it.getValue("name") })
+    }
+
+    @Test
+    fun `rejects updating another users workout plan`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Privada", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val other = registerToken(); saveCalisthenicsProfile(other)
+
+        val response = request("PUT", "/api/v1/workout-plans/${body(plan).getValue("id")}", other, mapOf("name" to "Intrusa", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+
+        assertEquals(HttpStatus.FORBIDDEN.value(), response.statusCode())
+    }
+    @Test
     fun `creates a calisthenics plan and records two sets`() {
         val token = registerToken()
         saveCalisthenicsProfile(token)

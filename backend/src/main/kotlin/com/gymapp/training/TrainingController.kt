@@ -3,6 +3,7 @@ package com.gymapp.training
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestAttribute
 import org.springframework.web.bind.annotation.RequestBody
@@ -29,6 +30,7 @@ data class WorkoutSessionResponse(val id: UUID, val planName: String, val starte
 class TrainingController(private val service: TrainingService) {
     @GetMapping fun list(@RequestAttribute("authenticatedUserId") userId: UUID) = service.listPlans(userId)
     @PostMapping fun create(@RequestAttribute("authenticatedUserId") userId: UUID, @RequestBody request: CreateWorkoutPlanRequest) = ResponseEntity.status(HttpStatus.CREATED).body(IdResponse(service.createPlan(userId, request)))
+    @PutMapping("/{planId}") fun update(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID, @RequestBody request: CreateWorkoutPlanRequest): ResponseEntity<Void> { service.updatePlan(userId, planId, request); return ResponseEntity.noContent().build() }
     @PostMapping("/{planId}/sessions") fun session(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID, @RequestBody request: CreateWorkoutSessionRequest) = ResponseEntity.status(HttpStatus.CREATED).body(IdResponse(service.createSession(userId, planId, request)))
     @ExceptionHandler(IllegalArgumentException::class) fun invalidRequest() = ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).build<Void>()
     @ExceptionHandler(PlanAccessDeniedException::class) fun forbidden() = ResponseEntity.status(HttpStatus.FORBIDDEN).build<Void>()

@@ -183,6 +183,7 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
     var activeProfile by remember { mutableStateOf(profile) }
     var catalog by remember { mutableStateOf(ExerciseCatalogState()) }
     var draft by remember { mutableStateOf(RoutineDraftState()) }
+    var editingPlanId by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var saveError by remember { mutableStateOf<String?>(null) }
     var plans by remember { mutableStateOf<List<WorkoutPlanResponse>>(emptyList()) }
@@ -266,15 +267,17 @@ private fun TrainingHome(token: String, profile: String, onUnauthorized: () -> U
                 saving = true; saveError = null
                 val exercises = draft.exercises.map { WorkoutPlanExerciseRequest(it.exercise.id, it.sets, it.repetitions, it.repetitions, it.restSeconds) }
                 val request = CreateWorkoutPlanRequest(draft.name.trim(), draft.scheduledDays.sorted().map { WorkoutDayRequest(it, exercises) })
-                runCatching { GymApi.create().createWorkoutPlan("Bearer $token", request) }.onSuccess {
-                    draft = RoutineDraftState(); refreshPlans++; screen = TrainingScreen.ROUTINES
+                val result = if (editingPlanId == null) runCatching { GymApi.create().createWorkoutPlan("Bearer $token", request) }.map { Unit }
+                else runCatching { GymApi.create().updateWorkoutPlan("Bearer $token", editingPlanId.orEmpty(), request) }
+                result.onSuccess {
+                    draft = RoutineDraftState(); editingPlanId = null; refreshPlans++; screen = TrainingScreen.ROUTINES
                 }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { saveError = it.message ?: "No fue posible guardar la rutina" } }
                 saving = false
             }
-        }, onBack = { screen = TrainingScreen.CATALOG })
+        }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
         TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; screen = TrainingScreen.SESSION
-        }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { screen = TrainingScreen.CATALOG })
+        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onBack = { screen = TrainingScreen.CATALOG })
         TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onStateChanged = { session = it }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null

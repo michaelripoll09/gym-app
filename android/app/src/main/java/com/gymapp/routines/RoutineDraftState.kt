@@ -1,6 +1,7 @@
 package com.gymapp.routines
 
 import com.gymapp.network.ExerciseResponse
+import com.gymapp.network.WorkoutPlanResponse
 
 fun routineListKey(section: String, exerciseId: String) = "$section-$exerciseId"
 
@@ -16,6 +17,15 @@ data class RoutineDraftState(
     val scheduledDays: Set<String> = emptySet(),
     val exercises: List<RoutineExerciseDraft> = emptyList()
 ) {
+    companion object {
+        fun from(plan: WorkoutPlanResponse) = RoutineDraftState(
+            name = plan.name,
+            scheduledDays = plan.days.map { it.name }.toSet(),
+            exercises = plan.days.flatMap { it.exercises }.distinctBy { it.exerciseId }.map {
+                RoutineExerciseDraft(ExerciseResponse(it.exerciseId, it.name, ""), it.sets, it.minRepetitions, it.restSeconds)
+            },
+        )
+    }
     fun toggleDay(day: String): RoutineDraftState = copy(scheduledDays = if (day in scheduledDays) scheduledDays - day else scheduledDays + day)
 
     fun addExercise(exercise: ExerciseResponse): RoutineDraftState =

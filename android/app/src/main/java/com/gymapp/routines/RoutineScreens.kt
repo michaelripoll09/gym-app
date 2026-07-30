@@ -83,7 +83,7 @@ private fun RowScope.NumberField(label: String, value: Int, onValueChange: (Int)
 }
 
 @Composable
-fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error: String?, onStart: (WorkoutPlanResponse) -> Unit, onHistory: () -> Unit, onProgress: () -> Unit, onBack: () -> Unit) {
+fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error: String?, onStart: (WorkoutPlanResponse) -> Unit, onEdit: (WorkoutPlanResponse) -> Unit, onHistory: () -> Unit, onProgress: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Mis rutinas", color = lime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver al catálogo") } }
@@ -100,6 +100,7 @@ fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error:
                         Text("${day.name}: ${day.exercises.joinToString { "${it.name} · ${it.sets}×${it.minRepetitions}-${it.maxRepetitions} · ${it.restSeconds}s" }}", color = Color.LightGray)
                     }
                     Button(onClick = { onStart(plan) }) { Text("Iniciar rutina") }
+                    Button(onClick = { onEdit(plan) }) { Text("Editar rutina") }
                 }
             }
         }

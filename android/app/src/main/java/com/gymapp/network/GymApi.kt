@@ -38,6 +38,7 @@ interface GymApi {
     @GET("me/training-profile") suspend fun trainingProfile(@Header("Authorization") authorization: String): TrainingProfileResponse
     @GET("exercises") suspend fun exercises(@Query("profile") profile: String): List<ExerciseResponse>
     @POST("workout-plans") suspend fun createWorkoutPlan(@Header("Authorization") authorization: String, @Body request: CreateWorkoutPlanRequest): IdResponse
+    @PUT("workout-plans/{planId}") suspend fun updateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutPlanRequest)
     @GET("workout-plans") suspend fun workoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>
     @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): IdResponse
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
