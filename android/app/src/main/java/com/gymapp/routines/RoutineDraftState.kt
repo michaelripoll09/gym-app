@@ -4,6 +4,7 @@ import com.gymapp.network.ExerciseResponse
 import com.gymapp.network.WorkoutPlanResponse
 
 fun routineListKey(section: String, exerciseId: String) = "$section-$exerciseId"
+val routineEditorDays = listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
 
 data class RoutineExerciseDraft(
     val exercise: ExerciseResponse,

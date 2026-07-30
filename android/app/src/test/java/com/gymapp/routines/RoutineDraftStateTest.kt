@@ -9,6 +9,15 @@ import org.junit.Test
 
 class RoutineDraftStateTest {
     @Test
+    fun `offers all seven days including Sunday and preserves it in an edited draft`() {
+        val edited = RoutineDraftState.from(WorkoutPlanResponse("plan-1", "Fin de semana", listOf(WorkoutPlanDayResponse("Domingo", emptyList()))))
+
+        assertEquals(listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"), routineEditorDays)
+        assertEquals(setOf("Domingo"), edited.scheduledDays)
+        assertEquals(emptySet<String>(), edited.toggleDay("Domingo").scheduledDays)
+    }
+
+    @Test
     fun `loads an existing plan into the routine editor draft`() {
         val draft = RoutineDraftState.from(WorkoutPlanResponse("plan-1", "Fuerza", listOf(WorkoutPlanDayResponse("Lunes", listOf(WorkoutPlanExerciseResponse("exercise-1", "Sentadilla", 4, 8, 8, 90))))))
 

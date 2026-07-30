@@ -2,6 +2,8 @@ package com.gymapp.routines
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +30,7 @@ private val lime = Color(0xFFB9F227)
 private val card = Color(0xFF1C2022)
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun RoutineEditorScreen(
     draft: RoutineDraftState,
     catalog: List<ExerciseResponse>,
@@ -43,8 +46,8 @@ fun RoutineEditorScreen(
         item { OutlinedTextField(draft.name, { onDraftChanged(draft.copy(name = it)) }, label = { Text("Nombre de la rutina") }, modifier = Modifier.fillMaxWidth()) }
         item {
             Text("Días programados", color = Color.White)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado").forEach { day ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                routineEditorDays.forEach { day ->
                     Button(onClick = { onDraftChanged(draft.toggleDay(day)) }) { Text(if (day in draft.scheduledDays) "✓ ${day.take(2)}" else day.take(2)) }
                 }
             }
