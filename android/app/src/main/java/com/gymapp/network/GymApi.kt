@@ -37,6 +37,8 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class ExerciseProgressionResponse(val exerciseName: String, val previousRepetitions: Int, val latestRepetitions: Int, val previousLoadKg: Double, val latestLoadKg: Double, val action: String, val explanation: String)
 @Serializable data class BodyMeasurementRequest(val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
 @Serializable data class BodyMeasurementResponse(val id: String, val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
+@Serializable data class ProgressGoalRequest(val type: String, val targetValue: Double, val targetDate: String? = null, val exerciseName: String? = null)
+@Serializable data class ProgressGoalResponse(val id: String, val type: String, val targetValue: Double, val targetDate: String? = null, val status: String, val currentValue: Double? = null, val exerciseName: String? = null, val completedAt: String? = null)
 
 interface GymApi {
     @POST("auth/register") suspend fun register(@Body request: RegisterRequest): AuthResponse
@@ -60,6 +62,11 @@ interface GymApi {
     @POST("body-measurements") suspend fun createBodyMeasurement(@Header("Authorization") authorization: String, @Body request: BodyMeasurementRequest): BodyMeasurementResponse
     @PUT("body-measurements/{measurementId}") suspend fun updateBodyMeasurement(@Header("Authorization") authorization: String, @Path("measurementId") measurementId: String, @Body request: BodyMeasurementRequest)
     @DELETE("body-measurements/{measurementId}") suspend fun deleteBodyMeasurement(@Header("Authorization") authorization: String, @Path("measurementId") measurementId: String)
+    @GET("progress-goals") suspend fun progressGoals(@Header("Authorization") authorization: String): List<ProgressGoalResponse>
+    @POST("progress-goals") suspend fun createProgressGoal(@Header("Authorization") authorization: String, @Body request: ProgressGoalRequest): ProgressGoalResponse
+    @PUT("progress-goals/{id}") suspend fun updateProgressGoal(@Header("Authorization") authorization: String, @Path("id") id: String, @Body request: ProgressGoalRequest)
+    @PUT("progress-goals/{id}/complete") suspend fun completeProgressGoal(@Header("Authorization") authorization: String, @Path("id") id: String)
+    @DELETE("progress-goals/{id}") suspend fun deleteProgressGoal(@Header("Authorization") authorization: String, @Path("id") id: String)
     companion object {
         fun create(): GymApi = Retrofit.Builder().baseUrl("${BuildConfig.API_BASE_URL}/").addConverterFactory(kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType())).build().create(GymApi::class.java)
     }
