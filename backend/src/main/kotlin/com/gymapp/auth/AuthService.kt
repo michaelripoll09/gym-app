@@ -1,6 +1,7 @@
 package com.gymapp.auth
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -12,6 +13,7 @@ class AuthService(
     private val users: UserRepository,
     private val consents: ConsentRepository,
     private val jwt: JwtService,
+    private val jdbc: JdbcTemplate,
 ) {
     private val passwordEncoder = BCryptPasswordEncoder()
 
@@ -35,6 +37,15 @@ class AuthService(
     fun me(userId: UUID): MeResponse {
         val user = users.findById(userId).orElseThrow { InvalidCredentialsException() }
         return MeResponse(user.id, user.email)
+    }
+
+    @Transactional
+    fun deleteAccount(userId: UUID) {
+        if (!users.existsById(userId)) throw InvalidCredentialsException()
+        jdbc.update("delete from workout_plans where user_id=?", userId)
+        jdbc.update("delete from training_profiles where user_id=?", userId)
+        jdbc.update("delete from consents where user_id=?", userId)
+        users.deleteById(userId)
     }
 
     private fun normalizeEmail(value: String) = value.trim().lowercase(Locale.ROOT)

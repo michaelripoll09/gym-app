@@ -20,6 +20,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.gymapp.onboarding.ProfileSelectionState
 import com.gymapp.onboarding.TrainingProfile
+import com.gymapp.account.AccountDeletionState
+import com.gymapp.account.accountDeletionResult
+import com.gymapp.account.cancelAccountDeletion
+import com.gymapp.account.confirmAccountDeletion
+import com.gymapp.account.requestAccountDeletion
 import kotlinx.coroutines.launch
 
 @Composable
@@ -29,10 +34,12 @@ fun ProfileEditorScreen(
     saveError: String?,
     onSave: suspend (ProfileSelectionState) -> Boolean,
     onSaved: (String) -> Unit,
+    onDeleteAccount: suspend () -> Boolean,
     onBack: () -> Unit,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
     var error by remember { mutableStateOf<String?>(null) }
+    var deletion by remember { mutableStateOf(AccountDeletionState()) }
     val scope = rememberCoroutineScope()
     Column(
         Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
@@ -69,5 +76,16 @@ fun ProfileEditorScreen(
             scope.launch { if (onSave(selection)) onSaved(request.primaryProfile) }
         }) { Text(if (saving) "Guardando…" else "Guardar cambios") }
         Button(onClick = onBack) { Text("Volver") }
+        Text("Zona de privacidad")
+        if (!deletion.confirming) Button(onClick = { deletion = requestAccountDeletion(deletion) }) { Text("Eliminar cuenta") }
+        else {
+            Text("Esta accion elimina tu cuenta y todos tus datos personales de forma irreversible.", color = Color.Red)
+            deletion.error?.let { Text(it, color = Color.Red) }
+            Button(onClick = { deletion = cancelAccountDeletion(deletion) }, enabled = !deletion.deleting) { Text("Cancelar") }
+            Button(onClick = { scope.launch {
+                deletion = confirmAccountDeletion(deletion)
+                deletion = accountDeletionResult(deletion, onDeleteAccount())
+            } }, enabled = !deletion.deleting) { Text(if (deletion.deleting) "Eliminando..." else "Confirmar eliminacion") }
+        }
     }
 }
