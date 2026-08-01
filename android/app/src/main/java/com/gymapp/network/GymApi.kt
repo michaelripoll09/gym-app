@@ -3,6 +3,7 @@ package com.gymapp.network
 import com.gymapp.BuildConfig
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Header
@@ -34,6 +35,8 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class NextWeeklySessionResponse(val planName: String, val dayName: String)
 @Serializable data class WeeklyTrainingSummaryResponse(val completedSessions: Int, val scheduledSessions: Int, val adherencePercent: Int, val volumeKg: Double, val nextSession: NextWeeklySessionResponse? = null)
 @Serializable data class ExerciseProgressionResponse(val exerciseName: String, val previousRepetitions: Int, val latestRepetitions: Int, val previousLoadKg: Double, val latestLoadKg: Double, val action: String, val explanation: String)
+@Serializable data class BodyMeasurementRequest(val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
+@Serializable data class BodyMeasurementResponse(val id: String, val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
 
 interface GymApi {
     @POST("auth/register") suspend fun register(@Body request: RegisterRequest): AuthResponse
@@ -53,6 +56,10 @@ interface GymApi {
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
     @GET("training-summary/weekly") suspend fun weeklyTrainingSummary(@Header("Authorization") authorization: String): WeeklyTrainingSummaryResponse
     @GET("training-progress/recommendations") suspend fun progressionRecommendations(@Header("Authorization") authorization: String): List<ExerciseProgressionResponse>
+    @GET("body-measurements") suspend fun bodyMeasurements(@Header("Authorization") authorization: String): List<BodyMeasurementResponse>
+    @POST("body-measurements") suspend fun createBodyMeasurement(@Header("Authorization") authorization: String, @Body request: BodyMeasurementRequest): BodyMeasurementResponse
+    @PUT("body-measurements/{measurementId}") suspend fun updateBodyMeasurement(@Header("Authorization") authorization: String, @Path("measurementId") measurementId: String, @Body request: BodyMeasurementRequest)
+    @DELETE("body-measurements/{measurementId}") suspend fun deleteBodyMeasurement(@Header("Authorization") authorization: String, @Path("measurementId") measurementId: String)
     companion object {
         fun create(): GymApi = Retrofit.Builder().baseUrl("${BuildConfig.API_BASE_URL}/").addConverterFactory(kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.asConverterFactory("application/json".toMediaType())).build().create(GymApi::class.java)
     }

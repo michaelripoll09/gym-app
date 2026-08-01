@@ -53,6 +53,12 @@ import com.gymapp.network.WorkoutDayRequest
 import com.gymapp.network.WorkoutPlanExerciseRequest
 import com.gymapp.network.WorkoutPlanResponse
 import com.gymapp.network.SetLogRequest
+import com.gymapp.network.BodyMeasurementRequest
+import com.gymapp.network.BodyMeasurementResponse
+import com.gymapp.measurements.BodyMeasurementsState
+import com.gymapp.measurements.MeasurementsScreen
+import com.gymapp.measurements.removeMeasurement
+import com.gymapp.measurements.replaceMeasurement
 import com.gymapp.onboarding.TrainingProfile
 import com.gymapp.onboarding.ProfileSelectionState
 import com.gymapp.profile.ProfileRecoveryState
@@ -217,7 +223,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
@@ -251,6 +257,11 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var measurements by remember { mutableStateOf(BodyMeasurementsState()) }
+    var refreshMeasurements by remember { mutableIntStateOf(0) }
+    var editingMeasurement by remember { mutableStateOf<BodyMeasurementResponse?>(null) }
+    var measurementSaving by remember { mutableStateOf(false) }
+    var measurementMessage by remember { mutableStateOf<String?>(null) }
     var progression by remember { mutableStateOf(ProgressionState()) }
     var refreshProgression by remember { mutableIntStateOf(0) }
     var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
@@ -324,6 +335,14 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             runCatching { GymApi.create().workoutSessions("Bearer $token") }
                 .onSuccess { progress = TrainingProgressState.loaded(it, Instant.now()) }
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
+        }
+    }
+    LaunchedEffect(screen, refreshMeasurements) {
+        if (screen == TrainingScreen.MEASUREMENTS) {
+            measurements = BodyMeasurementsState(loading = true)
+            runCatching { GymApi.create().bodyMeasurements("Bearer $token") }
+                .onSuccess { measurements = BodyMeasurementsState(measurements = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else measurements = BodyMeasurementsState(error = "No pudimos cargar tus medidas. Reintenta.") }
         }
     }
     LaunchedEffect(screen, refreshWeeklySummary) {
@@ -434,7 +453,38 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, pendingSessions, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.MEASUREMENTS -> MeasurementsScreen(
+            state = measurements,
+            saving = measurementSaving,
+            editing = editingMeasurement,
+            message = measurementMessage,
+            onSave = { request -> scope.launch {
+                measurementSaving = true; measurementMessage = null
+                val editing = editingMeasurement
+                val result = if (editing == null) runCatching { GymApi.create().createBodyMeasurement("Bearer $token", request) }
+                else runCatching { GymApi.create().updateBodyMeasurement("Bearer $token", editing.id, request) }.map { editing.copy(recordedOn = request.recordedOn, weightKg = request.weightKg, waistCm = request.waistCm, hipCm = request.hipCm, chestCm = request.chestCm) }
+                result.onSuccess { saved ->
+                    measurements = if (editing == null) BodyMeasurementsState(measurements = (measurements.measurements + saved).sortedByDescending { it.recordedOn }) else BodyMeasurementsState(measurements = replaceMeasurement(measurements.measurements, saved))
+                    editingMeasurement = null
+                }.onFailure { error ->
+                    if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized()
+                    else measurementMessage = if ((error as? HttpException)?.code() == 422) "Revisa la fecha, los rangos y que no exista otra medida ese día." else "No pudimos guardar la medida. Reintenta."
+                }
+                measurementSaving = false
+            } },
+            onEdit = { editingMeasurement = it; measurementMessage = null },
+            onDelete = { measurement -> scope.launch {
+                measurementSaving = true; measurementMessage = null
+                runCatching { GymApi.create().deleteBodyMeasurement("Bearer $token", measurement.id) }
+                    .onSuccess { measurements = BodyMeasurementsState(measurements = removeMeasurement(measurements.measurements, measurement.id)); if (editingMeasurement?.id == measurement.id) editingMeasurement = null }
+                    .onFailure { error -> if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized() else measurementMessage = "No pudimos eliminar la medida. Reintenta." }
+                measurementSaving = false
+            } },
+            onCancelEdit = { editingMeasurement = null; measurementMessage = null },
+            onRetry = { refreshMeasurements++ },
+            onBack = { editingMeasurement = null; screen = TrainingScreen.PROGRESS },
+        )
         TrainingScreen.PROGRESSION -> ProgressionScreen(progression, onRetry = { refreshProgression++ }, onBack = { screen = TrainingScreen.PROGRESS })
         TrainingScreen.SUMMARY -> WeeklySummaryScreen(weeklySummary, onRetry = { refreshWeeklySummary++ }, onBack = { screen = TrainingScreen.CATALOG })
     }
