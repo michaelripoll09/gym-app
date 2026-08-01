@@ -59,6 +59,8 @@ import com.gymapp.measurements.BodyMeasurementsState
 import com.gymapp.measurements.MeasurementsScreen
 import com.gymapp.measurements.removeMeasurement
 import com.gymapp.measurements.replaceMeasurement
+import com.gymapp.goals.GoalsScreen
+import com.gymapp.network.ProgressGoalResponse
 import com.gymapp.onboarding.TrainingProfile
 import com.gymapp.onboarding.ProfileSelectionState
 import com.gymapp.profile.ProfileRecoveryState
@@ -223,7 +225,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, GOALS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
@@ -262,6 +264,10 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var editingMeasurement by remember { mutableStateOf<BodyMeasurementResponse?>(null) }
     var measurementSaving by remember { mutableStateOf(false) }
     var measurementMessage by remember { mutableStateOf<String?>(null) }
+    var goals by remember { mutableStateOf<List<ProgressGoalResponse>>(emptyList()) }
+    var goalsLoading by remember { mutableStateOf(false) }
+    var goalsError by remember { mutableStateOf<String?>(null) }
+    var refreshGoals by remember { mutableIntStateOf(0) }
     var progression by remember { mutableStateOf(ProgressionState()) }
     var refreshProgression by remember { mutableIntStateOf(0) }
     var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
@@ -345,6 +351,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else measurements = BodyMeasurementsState(error = "No pudimos cargar tus medidas. Reintenta.") }
         }
     }
+    LaunchedEffect(screen, refreshGoals) { if (screen == TrainingScreen.GOALS) { goalsLoading=true; goalsError=null; runCatching { GymApi.create().progressGoals("Bearer $token") }.onSuccess { goals=it }.onFailure { if(requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else goalsError="No pudimos cargar tus objetivos." }; goalsLoading=false } }
     LaunchedEffect(screen, refreshWeeklySummary) {
         if (screen == TrainingScreen.SUMMARY) {
             weeklySummary = WeeklySummaryState(loading = true)
@@ -453,7 +460,8 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, pendingSessions, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onGoals = { screen = TrainingScreen.GOALS }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.GOALS -> GoalsScreen(goals, goalsLoading, goalsError, onSave = { request, id -> scope.launch { if(id==null) runCatching { GymApi.create().createProgressGoal("Bearer $token",request) }.onSuccess { goals=listOf(it)+goals }.onFailure { goalsError="No pudimos guardar el objetivo." } else runCatching { GymApi.create().updateProgressGoal("Bearer $token",id,request) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos actualizar el objetivo." } } }, onComplete = { goal -> scope.launch { runCatching { GymApi.create().completeProgressGoal("Bearer $token",goal.id) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos completar el objetivo." } } }, onDelete = { goal -> scope.launch { runCatching { GymApi.create().deleteProgressGoal("Bearer $token",goal.id) }.onSuccess { goals=goals.filterNot { it.id==goal.id } }.onFailure { goalsError="No pudimos eliminar el objetivo." } } }, onRetry = { refreshGoals++ }, onBack = { screen=TrainingScreen.PROGRESS })
         TrainingScreen.MEASUREMENTS -> MeasurementsScreen(
             state = measurements,
             saving = measurementSaving,
