@@ -8,3 +8,7 @@ interface UserRepository : JpaRepository<User, UUID> {
 }
 
 interface ConsentRepository : JpaRepository<Consent, UUID>
+
+interface PasswordResetTokenRepository : JpaRepository<PasswordResetToken, UUID> {
+    fun findByTokenHash(tokenHash: String): PasswordResetToken?
+}

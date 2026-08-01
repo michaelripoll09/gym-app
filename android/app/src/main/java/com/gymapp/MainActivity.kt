@@ -37,6 +37,8 @@ import com.gymapp.auth.AccessState
 import com.gymapp.auth.TokenStore
 import com.gymapp.account.clearLocalAccountData
 import com.gymapp.auth.accessErrorMessage
+import com.gymapp.auth.passwordResetConfirmationError
+import com.gymapp.auth.passwordResetRequestError
 import com.gymapp.auth.requiresSessionReset
 import com.gymapp.catalog.ExerciseCatalogScreen
 import com.gymapp.catalog.ExerciseCatalogState
@@ -63,6 +65,8 @@ import com.gymapp.measurements.replaceMeasurement
 import com.gymapp.goals.GoalsScreen
 import com.gymapp.network.ProgressGoalResponse
 import com.gymapp.network.ChangePasswordRequest
+import com.gymapp.network.PasswordResetConfirmationRequest
+import com.gymapp.network.PasswordResetRequest
 import com.gymapp.onboarding.TrainingProfile
 import com.gymapp.onboarding.ProfileSelectionState
 import com.gymapp.profile.ProfileRecoveryState
@@ -110,17 +114,21 @@ import retrofit2.HttpException
 
 class MainActivity : ComponentActivity() {
     private var openToday by mutableStateOf(false)
+    private var resetToken by mutableStateOf<String?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openToday = intent?.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false) == true
-        setContent { AppFlow(TokenStore(this), openToday, onTodayOpened = { openToday = false }) }
+        resetToken = intent?.data?.getQueryParameter("token")
+        setContent { AppFlow(TokenStore(this), openToday, resetToken, onTodayOpened = { openToday = false }) }
     }
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openToday = intent.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false) }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openToday = intent.getBooleanExtra(ReminderScheduler.EXTRA_OPEN_TODAY, false); resetToken = intent.data?.getQueryParameter("token") }
 }
 
 @Composable
-private fun AppFlow(store: TokenStore, openToday: Boolean = false, onTodayOpened: () -> Unit = {}) {
+private fun AppFlow(store: TokenStore, openToday: Boolean = false, incomingResetToken: String? = null, onTodayOpened: () -> Unit = {}) {
     var token by remember { mutableStateOf(store.read()) }
+    var requestingPasswordReset by remember { mutableStateOf(false) }
+    var resetToken by remember(incomingResetToken) { mutableStateOf(incomingResetToken) }
     var recovery by remember { mutableStateOf<ProfileRecoveryState>(ProfileRecoveryState.Loading) }
     var recoveryAttempt by remember { mutableIntStateOf(0) }
     LaunchedEffect(token, recoveryAttempt) {
@@ -133,7 +141,9 @@ private fun AppFlow(store: TokenStore, openToday: Boolean = false, onTodayOpened
         }
     }
     when {
-        token == null -> Access(store, onRegistered = { token = it }, onLoggedIn = { token = it })
+        token == null && resetToken != null -> PasswordResetConfirmation(resetToken.orEmpty(), onDone = { resetToken = null; requestingPasswordReset = false })
+        token == null && requestingPasswordReset -> PasswordResetRequestScreen(onBack = { requestingPasswordReset = false })
+        token == null -> Access(store, onRegistered = { token = it }, onLoggedIn = { token = it }, onForgotPassword = { requestingPasswordReset = true })
         recovery is ProfileRecoveryState.Loading -> ProfileLoading()
         recovery is ProfileRecoveryState.Existing -> TrainingHome(token.orEmpty(), (recovery as ProfileRecoveryState.Existing).primaryProfile, openToday, onTodayOpened, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.NeedsOnboarding -> Onboarding(token.orEmpty(), onSaved = { profile -> store.saveProfile(profile); recovery = ProfileRecoveryState.Existing(profile) }, onUnauthorized = { store.clear(); token = null })
@@ -159,7 +169,7 @@ private fun ProfileRecoveryError(onRetry: () -> Unit) {
 }
 
 @Composable
-private fun Access(store: TokenStore, onRegistered: (String) -> Unit, onLoggedIn: (String) -> Unit) {
+private fun Access(store: TokenStore, onRegistered: (String) -> Unit, onLoggedIn: (String) -> Unit, onForgotPassword: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var state by remember { mutableStateOf(AccessState()) }
@@ -170,6 +180,7 @@ private fun Access(store: TokenStore, onRegistered: (String) -> Unit, onLoggedIn
         OutlinedTextField(password, { password = it }, label = { Text("Contraseña") })
         state.error?.let { Text(it, color = Color.Red) }
         Button(onClick = { state = state.toggleMode() }) { Text(if (state.mode == AccessMode.REGISTER) "Ya tengo cuenta" else "Crear una cuenta") }
+        if (state.mode == AccessMode.LOGIN) Button(onClick = onForgotPassword) { Text("Olvidé mi contraseña") }
         Button(onClick = { scope.launch {
             val mode = state.mode
             val response = runCatching { if (mode == AccessMode.REGISTER) GymApi.create().register(RegisterRequest(email, password, Instant.now().toString())) else GymApi.create().login(com.gymapp.network.LoginRequest(email, password)) }
@@ -178,6 +189,47 @@ private fun Access(store: TokenStore, onRegistered: (String) -> Unit, onLoggedIn
                 if (mode == AccessMode.REGISTER) onRegistered(it.accessToken) else onLoggedIn(it.accessToken)
             }.onFailure { state = state.copy(error = accessErrorMessage(mode)) }
         } }) { Text(if (state.mode == AccessMode.REGISTER) "Crear cuenta" else "Iniciar sesión") }
+    }
+}
+
+@Composable
+private fun PasswordResetRequestScreen(onBack: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Restablecer contraseña")
+        Text("Te enviaremos un enlace si existe una cuenta asociada al correo.")
+        OutlinedTextField(email, { email = it }, label = { Text("Correo") })
+        message?.let { Text(it, color = Color.Red) }
+        Button(onClick = { scope.launch {
+            val error = passwordResetRequestError(email)
+            if (error != null) message = error else {
+                runCatching { GymApi.create().requestPasswordReset(PasswordResetRequest(email)) }
+                message = "Si existe una cuenta con este correo, recibirás un enlace de recuperación."
+            }
+        } }) { Text("Enviar enlace") }
+        Button(onClick = onBack) { Text("Volver") }
+    }
+}
+
+@Composable
+private fun PasswordResetConfirmation(resetToken: String, onDone: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Crea una nueva contraseña")
+        OutlinedTextField(password, { password = it }, label = { Text("Nueva contraseña") })
+        OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Confirmar contraseña") })
+        message?.let { Text(it, color = Color.Red) }
+        Button(onClick = { scope.launch {
+            val error = passwordResetConfirmationError(password, confirmation)
+            if (error != null) message = error else runCatching { GymApi.create().confirmPasswordReset(PasswordResetConfirmationRequest(resetToken, password)) }
+                .onSuccess { onDone() }
+                .onFailure { message = "El enlace es inválido o venció. Solicita uno nuevo." }
+        } }) { Text("Guardar contraseña") }
     }
 }
 

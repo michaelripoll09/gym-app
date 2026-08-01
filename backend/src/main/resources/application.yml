@@ -12,3 +12,7 @@ spring:
 gym-app:
   auth:
     jwt-secret: ${GYM_JWT_SECRET}
+  email:
+    resend-api-key: ${RESEND_API_KEY:}
+    from: ${RESEND_FROM_EMAIL:onboarding@resend.dev}
+    reset-url: ${GYM_RESET_URL:gymapp://reset-password}
