@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gymapp.network.WorkoutSessionResponse
+import com.gymapp.offline.PendingSession
 
 private val historyLime = Color(0xFFB9F227)
 private val historyCard = Color(0xFF1C2022)
@@ -25,6 +26,7 @@ private val historyCard = Color(0xFF1C2022)
 @Composable
 fun SessionHistoryScreen(
     state: SessionHistoryState,
+    pending: List<PendingSession>,
     onSelect: (WorkoutSessionResponse) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit
@@ -37,6 +39,7 @@ fun SessionHistoryScreen(
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Historial", color = historyLime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver a mis rutinas") } }
+        if (pending.isNotEmpty()) item { Text("${pending.size} sesión(es) pendiente(s) de sincronización. No se incluyen en el progreso todavía.", color = Color(0xFFFFD180)) }
         when (state.content()) {
             HistoryContent.LOADING -> item { Text("Cargando historial…", color = Color.LightGray) }
             HistoryContent.ERROR -> {

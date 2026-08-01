@@ -25,7 +25,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 @Composable
-fun SessionScreen(state: SessionDraftState, saving: Boolean, error: String?, onStateChanged: (SessionDraftState) -> Unit, onFinish: () -> Unit, onBack: () -> Unit) {
+fun SessionScreen(
+    state: SessionDraftState,
+    saving: Boolean,
+    error: String?,
+    onRepetitionsChanged: (Int, String) -> Unit,
+    onLoadChanged: (Int, String) -> Unit,
+    onFinish: () -> Unit,
+    onBack: () -> Unit
+) {
     var timerExercise by rememberSaveable { mutableStateOf("") }
     var timerConfigured by rememberSaveable { mutableStateOf(0) }
     var timerRemaining by rememberSaveable { mutableStateOf(0) }
@@ -39,8 +47,8 @@ fun SessionScreen(state: SessionDraftState, saving: Boolean, error: String?, onS
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1C2022))) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${set.exerciseName} · Serie ${set.setNumber}", color = Color.White)
-                    OutlinedTextField(set.repetitions, { onStateChanged(state.updateRepetitions(index, it)) }, label = { Text("Repeticiones realizadas") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
-                    OutlinedTextField(set.loadKg, { onStateChanged(state.updateLoadKg(index, it)) }, label = { Text("Carga (kg, opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                    OutlinedTextField(set.repetitions, { onRepetitionsChanged(index, it) }, label = { Text("Repeticiones realizadas") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                    OutlinedTextField(set.loadKg, { onLoadChanged(index, it) }, label = { Text("Carga (kg, opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
                     Button(onClick = { if (set.restSeconds > 0) { timerExercise = set.exerciseName; timerConfigured = set.restSeconds; timerRemaining = set.restSeconds; timerStatus = RestTimerStatus.RUNNING.name } }, enabled = !saving && set.restSeconds > 0) { Text("Completar serie · descansar ${set.restSeconds}s") }
                 }
             }

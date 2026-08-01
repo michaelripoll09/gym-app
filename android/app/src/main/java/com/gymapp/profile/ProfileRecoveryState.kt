@@ -16,3 +16,6 @@ fun resolveProfileRecovery(profile: TrainingProfileResponse?, statusCode: Int?):
     statusCode == 401 -> ProfileRecoveryState.Unauthorized
     else -> ProfileRecoveryState.RetryableFailure
 }
+
+fun offlineProfileFallback(state: ProfileRecoveryState, cachedProfile: String?): String? =
+    if (state == ProfileRecoveryState.RetryableFailure) cachedProfile else null

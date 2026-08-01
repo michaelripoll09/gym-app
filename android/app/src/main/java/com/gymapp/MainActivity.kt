@@ -53,16 +53,29 @@ import com.gymapp.network.WorkoutDayRequest
 import com.gymapp.network.WorkoutPlanExerciseRequest
 import com.gymapp.network.WorkoutPlanResponse
 import com.gymapp.network.SetLogRequest
+import com.gymapp.network.BodyMeasurementRequest
+import com.gymapp.network.BodyMeasurementResponse
+import com.gymapp.measurements.BodyMeasurementsState
+import com.gymapp.measurements.MeasurementsScreen
+import com.gymapp.measurements.removeMeasurement
+import com.gymapp.measurements.replaceMeasurement
 import com.gymapp.onboarding.TrainingProfile
 import com.gymapp.onboarding.ProfileSelectionState
 import com.gymapp.profile.ProfileRecoveryState
 import com.gymapp.profile.ProfileEditorScreen
 import com.gymapp.profile.ProfileEditorState
+import com.gymapp.profile.offlineProfileFallback
 import com.gymapp.profile.profileForUpdatedCatalog
 import com.gymapp.profile.resolveProfileEditor
 import com.gymapp.profile.resolveProfileRecovery
 import com.gymapp.progress.TrainingProgressScreen
 import com.gymapp.progress.TrainingProgressState
+import com.gymapp.offline.OfflineTrainingStore
+import com.gymapp.offline.PendingSession
+import com.gymapp.offline.PendingSessionsScreen
+import com.gymapp.offline.enqueuePendingSession
+import com.gymapp.offline.isOffline
+import com.gymapp.offline.removeSyncedSession
 import com.gymapp.routines.RoutineDraftState
 import com.gymapp.routines.RoutineEditorScreen
 import com.gymapp.routines.RoutineListScreen
@@ -87,6 +100,7 @@ import com.gymapp.reminders.ReminderDestination
 import com.gymapp.reminders.reminderDestination
 import java.time.Instant
 import java.time.LocalDate
+import java.util.UUID
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 
@@ -109,15 +123,18 @@ private fun AppFlow(store: TokenStore, openToday: Boolean = false, onTodayOpened
         if (token != null) {
             recovery = ProfileRecoveryState.Loading
             val result = runCatching { GymApi.create().trainingProfile("Bearer ${token.orEmpty()}") }
-            recovery = resolveProfileRecovery(result.getOrNull(), (result.exceptionOrNull() as? HttpException)?.code())
+            val resolved = resolveProfileRecovery(result.getOrNull(), (result.exceptionOrNull() as? HttpException)?.code())
+            if (resolved is ProfileRecoveryState.Existing) store.saveProfile(resolved.primaryProfile)
+            recovery = resolved
         }
     }
     when {
         token == null -> Access(store, onRegistered = { token = it }, onLoggedIn = { token = it })
         recovery is ProfileRecoveryState.Loading -> ProfileLoading()
         recovery is ProfileRecoveryState.Existing -> TrainingHome(token.orEmpty(), (recovery as ProfileRecoveryState.Existing).primaryProfile, openToday, onTodayOpened, onUnauthorized = { store.clear(); token = null })
-        recovery is ProfileRecoveryState.NeedsOnboarding -> Onboarding(token.orEmpty(), onSaved = { profile -> recovery = ProfileRecoveryState.Existing(profile) }, onUnauthorized = { store.clear(); token = null })
+        recovery is ProfileRecoveryState.NeedsOnboarding -> Onboarding(token.orEmpty(), onSaved = { profile -> store.saveProfile(profile); recovery = ProfileRecoveryState.Existing(profile) }, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.Unauthorized -> LaunchedEffect(Unit) { store.clear(); token = null }
+        recovery is ProfileRecoveryState.RetryableFailure && offlineProfileFallback(recovery, store.readProfile()) != null -> TrainingHome(token.orEmpty(), offlineProfileFallback(recovery, store.readProfile()).orEmpty(), openToday, onTodayOpened, onUnauthorized = { store.clear(); token = null })
         recovery is ProfileRecoveryState.RetryableFailure -> ProfileRecoveryError { recoveryAttempt++ }
     }
 }
@@ -206,11 +223,12 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, PROGRESSION, SUMMARY, REMINDERS }
+private enum class TrainingScreen { CATALOG, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
     val context = LocalContext.current
+    val tokenStore = remember { TokenStore(context) }
     var screen by remember { mutableStateOf(TrainingScreen.CATALOG) }
     var activeProfile by remember { mutableStateOf(profile) }
     var catalog by remember { mutableStateOf(ExerciseCatalogState()) }
@@ -221,6 +239,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var plans by remember { mutableStateOf<List<WorkoutPlanResponse>>(emptyList()) }
     var plansLoading by remember { mutableStateOf(false) }
     var plansError by remember { mutableStateOf<String?>(null) }
+    var plansOffline by remember { mutableStateOf(false) }
     var refreshPlans by remember { mutableIntStateOf(0) }
     var archivedPlans by remember { mutableStateOf(false) }
     var pendingArchive by remember { mutableStateOf<WorkoutPlanResponse?>(null) }
@@ -230,10 +249,19 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var sessionReturnScreen by remember { mutableStateOf(TrainingScreen.ROUTINES) }
     var sessionSaving by remember { mutableStateOf(false) }
     var sessionError by remember { mutableStateOf<String?>(null) }
+    val offlineStore = remember { OfflineTrainingStore(context) }
+    var pendingSessions by remember { mutableStateOf(offlineStore.pendingSessions()) }
+    var pendingSyncing by remember { mutableStateOf(false) }
+    var pendingSyncMessage by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(SessionHistoryState()) }
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var measurements by remember { mutableStateOf(BodyMeasurementsState()) }
+    var refreshMeasurements by remember { mutableIntStateOf(0) }
+    var editingMeasurement by remember { mutableStateOf<BodyMeasurementResponse?>(null) }
+    var measurementSaving by remember { mutableStateOf(false) }
+    var measurementMessage by remember { mutableStateOf<String?>(null) }
     var progression by remember { mutableStateOf(ProgressionState()) }
     var refreshProgression by remember { mutableIntStateOf(0) }
     var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
@@ -268,8 +296,15 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     }
     LaunchedEffect(screen, refreshPlans) {
         if (screen == TrainingScreen.ROUTINES) {
-            plansLoading = true; plansError = null
-            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess { plans = it; if (!archivedPlans) ReminderScheduler.reschedule(context, it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { plansError = it.message ?: "No pudimos cargar tus rutinas" } }
+            plansLoading = true; plansError = null; plansOffline = false
+            runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess {
+                plans = it
+                if (!archivedPlans) { offlineStore.cachePlans(it); ReminderScheduler.reschedule(context, it) }
+            }.onFailure {
+                if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
+                else if (!archivedPlans && isOffline(context) && offlineStore.cachedPlans().isNotEmpty()) { plans = offlineStore.cachedPlans(); plansOffline = true }
+                else plansError = it.message ?: "No pudimos cargar tus rutinas"
+            }
             plansLoading = false
         }
     }
@@ -278,9 +313,10 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             today = today.copy(loading = true, error = null)
             val day = spanishDayName(LocalDate.now().dayOfWeek)
             runCatching { GymApi.create().workoutPlans("Bearer $token") }
-                .onSuccess { today = TodayTrainingState(loading = false, plans = plansForToday(it, day)) }
+                .onSuccess { offlineStore.cachePlans(it); today = TodayTrainingState(loading = false, plans = plansForToday(it, day)) }
                 .onFailure {
                     if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
+                    else if (isOffline(context)) today = TodayTrainingState(loading = false, plans = plansForToday(offlineStore.cachedPlans(), day))
                     else today = todayLoadError(today.plans)
                 }
         }
@@ -299,6 +335,14 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             runCatching { GymApi.create().workoutSessions("Bearer $token") }
                 .onSuccess { progress = TrainingProgressState.loaded(it, Instant.now()) }
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
+        }
+    }
+    LaunchedEffect(screen, refreshMeasurements) {
+        if (screen == TrainingScreen.MEASUREMENTS) {
+            measurements = BodyMeasurementsState(loading = true)
+            runCatching { GymApi.create().bodyMeasurements("Bearer $token") }
+                .onSuccess { measurements = BodyMeasurementsState(measurements = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else measurements = BodyMeasurementsState(error = "No pudimos cargar tus medidas. Reintenta.") }
         }
     }
     LaunchedEffect(screen, refreshWeeklySummary) {
@@ -345,7 +389,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                     else if (requiresSessionReset((result.exceptionOrNull() as? HttpException)?.code())) { onUnauthorized(); false }
                     else { editorSaveError = "No pudimos guardar tu perfil. Inténtalo de nuevo"; false }
                 },
-                onSaved = { updatedPrimary -> activeProfile = profileForUpdatedCatalog(updatedPrimary); screen = TrainingScreen.CATALOG },
+                onSaved = { updatedPrimary -> tokenStore.saveProfile(updatedPrimary); activeProfile = profileForUpdatedCatalog(updatedPrimary); screen = TrainingScreen.CATALOG },
                 onBack = { screen = TrainingScreen.CATALOG },
             )
         }
@@ -362,9 +406,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 saving = false
             }
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
-        TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, onStart = { plan ->
+        TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, plansOffline, pendingSessions.size, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; sessionReturnScreen = TrainingScreen.ROUTINES; screen = TrainingScreen.SESSION
-        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onShowPending = { pendingSyncMessage = null; screen = TrainingScreen.PENDING_SESSIONS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
         TrainingScreen.REMINDERS -> ReminderScreen(reminderSettings, notificationPermissionGranted, onSettingsChanged = { settings ->
             ReminderStore(context).saveSettings(settings); reminderSettings = settings; ReminderScheduler.reschedule(context, plans)
         }, onRequestPermission = { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }, onOpenSettings = {
@@ -373,20 +417,74 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         TrainingScreen.TODAY -> TodayTrainingScreen(today, spanishDayName(LocalDate.now().dayOfWeek), onStart = { plan ->
             session = SessionDraftState.from(plan, spanishDayName(LocalDate.now().dayOfWeek)); sessionError = null; sessionReturnScreen = TrainingScreen.TODAY; screen = TrainingScreen.SESSION
         }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onRetry = { refreshToday++ }, onBack = { screen = TrainingScreen.CATALOG })
-        TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onStateChanged = { session = it }, onFinish = {
+        TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onRepetitionsChanged = { index, value ->
+            session = session?.updateRepetitions(index, value)
+        }, onLoadChanged = { index, value ->
+            session = session?.updateLoadKg(index, value)
+        }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null
                 val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) })
                 runCatching { GymApi.create().createWorkoutSession("Bearer $token", currentSession.planId, request) }.onSuccess {
-                    refreshPlans++; refreshToday++; refreshWeeklySummary++; screen = sessionReturnScreen
-                }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { sessionError = it.message ?: "No fue posible guardar la sesión" } }
+                    refreshPlans++; refreshToday++; refreshWeeklySummary++; refreshHistory++; refreshProgress++; screen = sessionReturnScreen
+                }.onFailure {
+                    if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
+                    else if (isOffline(context)) {
+                        val pending = PendingSession(UUID.randomUUID().toString(), currentSession.planId, currentSession.planName, Instant.now().toString(), request)
+                        pendingSessions = enqueuePendingSession(pendingSessions, pending); offlineStore.savePendingSessions(pendingSessions)
+                        pendingSyncMessage = "Sesión guardada sin conexión. Sincronízala cuando tengas internet."; screen = sessionReturnScreen
+                    } else sessionError = it.message ?: "No fue posible guardar la sesión"
+                }
                 sessionSaving = false
             }
         }, onBack = { screen = sessionReturnScreen }) }
-        TrainingScreen.HISTORY -> SessionHistoryScreen(history, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
+        TrainingScreen.PENDING_SESSIONS -> PendingSessionsScreen(pendingSessions, pendingSyncing, pendingSyncMessage, onSync = { scope.launch {
+            pendingSyncing = true; var successful = 0; var failed = 0
+            for (pending in pendingSessions.toList()) {
+                val result = runCatching { GymApi.create().createWorkoutSession("Bearer $token", pending.planId, pending.request) }
+                if (result.isSuccess) { pendingSessions = removeSyncedSession(pendingSessions, pending.localId); offlineStore.savePendingSessions(pendingSessions); successful++ }
+                else if (requiresSessionReset((result.exceptionOrNull() as? HttpException)?.code())) { onUnauthorized(); break }
+                else failed++
+            }
+            pendingSyncMessage = if (failed == 0) "$successful sesión(es) sincronizada(s)." else "Error: $successful sincronizada(s), $failed pendiente(s). Reintenta cuando tengas conexión."
+            if (successful > 0) { refreshHistory++; refreshProgress++; refreshToday++; refreshWeeklySummary++ }
+            pendingSyncing = false
+        } }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.HISTORY -> SessionHistoryScreen(history, pendingSessions, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.MEASUREMENTS -> MeasurementsScreen(
+            state = measurements,
+            saving = measurementSaving,
+            editing = editingMeasurement,
+            message = measurementMessage,
+            onSave = { request -> scope.launch {
+                measurementSaving = true; measurementMessage = null
+                val editing = editingMeasurement
+                val result = if (editing == null) runCatching { GymApi.create().createBodyMeasurement("Bearer $token", request) }
+                else runCatching { GymApi.create().updateBodyMeasurement("Bearer $token", editing.id, request) }.map { editing.copy(recordedOn = request.recordedOn, weightKg = request.weightKg, waistCm = request.waistCm, hipCm = request.hipCm, chestCm = request.chestCm) }
+                result.onSuccess { saved ->
+                    measurements = if (editing == null) BodyMeasurementsState(measurements = (measurements.measurements + saved).sortedByDescending { it.recordedOn }) else BodyMeasurementsState(measurements = replaceMeasurement(measurements.measurements, saved))
+                    editingMeasurement = null
+                }.onFailure { error ->
+                    if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized()
+                    else measurementMessage = if ((error as? HttpException)?.code() == 422) "Revisa la fecha, los rangos y que no exista otra medida ese día." else "No pudimos guardar la medida. Reintenta."
+                }
+                measurementSaving = false
+            } },
+            onEdit = { editingMeasurement = it; measurementMessage = null },
+            onDelete = { measurement -> scope.launch {
+                measurementSaving = true; measurementMessage = null
+                runCatching { GymApi.create().deleteBodyMeasurement("Bearer $token", measurement.id) }
+                    .onSuccess { measurements = BodyMeasurementsState(measurements = removeMeasurement(measurements.measurements, measurement.id)); if (editingMeasurement?.id == measurement.id) editingMeasurement = null }
+                    .onFailure { error -> if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized() else measurementMessage = "No pudimos eliminar la medida. Reintenta." }
+                measurementSaving = false
+            } },
+            onCancelEdit = { editingMeasurement = null; measurementMessage = null },
+            onRetry = { refreshMeasurements++ },
+            onBack = { editingMeasurement = null; screen = TrainingScreen.PROGRESS },
+        )
         TrainingScreen.PROGRESSION -> ProgressionScreen(progression, onRetry = { refreshProgression++ }, onBack = { screen = TrainingScreen.PROGRESS })
         TrainingScreen.SUMMARY -> WeeklySummaryScreen(weeklySummary, onRetry = { refreshWeeklySummary++ }, onBack = { screen = TrainingScreen.CATALOG })
     }
