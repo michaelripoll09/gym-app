@@ -29,4 +29,10 @@ class ProfileRecoveryStateTest {
     fun `marks other recovery failures as retryable`() {
         assertEquals(ProfileRecoveryState.RetryableFailure, resolveProfileRecovery(null, 500))
     }
+
+    @Test
+    fun `uses cached profile only after a recoverable offline failure`() {
+        assertEquals("FITNESS", offlineProfileFallback(ProfileRecoveryState.RetryableFailure, "FITNESS"))
+        assertEquals(null, offlineProfileFallback(ProfileRecoveryState.Unauthorized, "FITNESS"))
+    }
 }
