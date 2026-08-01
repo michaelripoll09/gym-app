@@ -48,8 +48,15 @@ class AuthService(
         users.deleteById(userId)
     }
 
+    @Transactional fun changePassword(userId: UUID, request: ChangePasswordRequest) {
+        val user = users.findById(userId).orElseThrow { InvalidCredentialsException() }
+        if (!passwordEncoder.matches(request.currentPassword, user.passwordHash) || request.newPassword.length < 8) throw InvalidPasswordChangeException()
+        jdbc.update("update users set password_hash=? where id=?", requireNotNull(passwordEncoder.encode(request.newPassword)), userId)
+    }
+
     private fun normalizeEmail(value: String) = value.trim().lowercase(Locale.ROOT)
 }
 
 class DuplicateEmailException : RuntimeException()
 class InvalidCredentialsException : RuntimeException()
+class InvalidPasswordChangeException : RuntimeException()

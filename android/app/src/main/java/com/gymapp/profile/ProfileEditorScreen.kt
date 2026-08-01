@@ -29,6 +29,8 @@ import com.gymapp.auth.LogoutState
 import com.gymapp.auth.cancelLogout
 import com.gymapp.auth.logoutResult
 import com.gymapp.auth.requestLogout
+import com.gymapp.auth.passwordChangeError
+import com.gymapp.network.ChangePasswordRequest
 import kotlinx.coroutines.launch
 
 @Composable
@@ -39,6 +41,7 @@ fun ProfileEditorScreen(
     onSave: suspend (ProfileSelectionState) -> Boolean,
     onSaved: (String) -> Unit,
     onLogout: () -> Boolean,
+    onChangePassword: suspend (ChangePasswordRequest) -> Boolean,
     onDeleteAccount: suspend () -> Boolean,
     onBack: () -> Unit,
 ) {
@@ -46,6 +49,7 @@ fun ProfileEditorScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var deletion by remember { mutableStateOf(AccountDeletionState()) }
     var logout by remember { mutableStateOf(LogoutState()) }
+    var currentPassword by remember { mutableStateOf("") }; var newPassword by remember { mutableStateOf("") }; var confirmationPassword by remember { mutableStateOf("") }; var passwordError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     Column(
         Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
@@ -83,6 +87,12 @@ fun ProfileEditorScreen(
         }) { Text(if (saving) "Guardando…" else "Guardar cambios") }
         Button(onClick = onBack) { Text("Volver") }
         Text("Zona de privacidad")
+        Text("Cambiar contrasena")
+        OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Contrasena actual") })
+        OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Nueva contrasena") })
+        OutlinedTextField(confirmationPassword, { confirmationPassword = it }, label = { Text("Confirmar nueva contrasena") })
+        passwordError?.let { Text(it, color = Color.Red) }
+        Button(onClick = { scope.launch { val validation = passwordChangeError(currentPassword, newPassword, confirmationPassword); if (validation != null) passwordError = validation else if (!onChangePassword(ChangePasswordRequest(currentPassword, newPassword))) passwordError = "No pudimos cambiar tu contrasena. Reintenta." } }) { Text("Cambiar contrasena") }
         if (!logout.confirming) Button(onClick = { logout = requestLogout(logout) }) { Text("Cerrar sesion") }
         else {
             Text("Cerrar sesion limpia los datos de esta cuenta en este dispositivo.", color = Color.Red)

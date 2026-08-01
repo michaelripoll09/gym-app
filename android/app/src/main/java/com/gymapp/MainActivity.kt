@@ -62,6 +62,7 @@ import com.gymapp.measurements.removeMeasurement
 import com.gymapp.measurements.replaceMeasurement
 import com.gymapp.goals.GoalsScreen
 import com.gymapp.network.ProgressGoalResponse
+import com.gymapp.network.ChangePasswordRequest
 import com.gymapp.onboarding.TrainingProfile
 import com.gymapp.onboarding.ProfileSelectionState
 import com.gymapp.profile.ProfileRecoveryState
@@ -399,6 +400,11 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 },
                 onSaved = { updatedPrimary -> tokenStore.saveProfile(updatedPrimary); activeProfile = profileForUpdatedCatalog(updatedPrimary); screen = TrainingScreen.CATALOG },
                 onLogout = { runCatching { clearLocalAccountData(onUnauthorized, offlineStore::clear, ReminderStore(context)::clear); true }.getOrDefault(false) },
+                onChangePassword = { request: ChangePasswordRequest ->
+                    val changed = runCatching { GymApi.create().changePassword("Bearer $token", request) }.isSuccess
+                    if (changed) clearLocalAccountData(onUnauthorized, offlineStore::clear, ReminderStore(context)::clear)
+                    changed
+                },
                 onDeleteAccount = {
                     val deleted = runCatching { GymApi.create().deleteAccount("Bearer $token") }.isSuccess
                     if (deleted) clearLocalAccountData(onUnauthorized, offlineStore::clear, ReminderStore(context)::clear)
