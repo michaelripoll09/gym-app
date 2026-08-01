@@ -25,6 +25,10 @@ import com.gymapp.account.accountDeletionResult
 import com.gymapp.account.cancelAccountDeletion
 import com.gymapp.account.confirmAccountDeletion
 import com.gymapp.account.requestAccountDeletion
+import com.gymapp.auth.LogoutState
+import com.gymapp.auth.cancelLogout
+import com.gymapp.auth.logoutResult
+import com.gymapp.auth.requestLogout
 import kotlinx.coroutines.launch
 
 @Composable
@@ -34,12 +38,14 @@ fun ProfileEditorScreen(
     saveError: String?,
     onSave: suspend (ProfileSelectionState) -> Boolean,
     onSaved: (String) -> Unit,
+    onLogout: () -> Boolean,
     onDeleteAccount: suspend () -> Boolean,
     onBack: () -> Unit,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
     var error by remember { mutableStateOf<String?>(null) }
     var deletion by remember { mutableStateOf(AccountDeletionState()) }
+    var logout by remember { mutableStateOf(LogoutState()) }
     val scope = rememberCoroutineScope()
     Column(
         Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
@@ -77,6 +83,13 @@ fun ProfileEditorScreen(
         }) { Text(if (saving) "Guardando…" else "Guardar cambios") }
         Button(onClick = onBack) { Text("Volver") }
         Text("Zona de privacidad")
+        if (!logout.confirming) Button(onClick = { logout = requestLogout(logout) }) { Text("Cerrar sesion") }
+        else {
+            Text("Cerrar sesion limpia los datos de esta cuenta en este dispositivo.", color = Color.Red)
+            logout.error?.let { Text(it, color = Color.Red) }
+            Button(onClick = { logout = cancelLogout(logout) }, enabled = !logout.loggingOut) { Text("Cancelar cierre") }
+            Button(onClick = { logout = logout.copy(loggingOut = true, error = null); logout = logoutResult(logout, onLogout()) }, enabled = !logout.loggingOut) { Text(if (logout.loggingOut) "Cerrando sesion..." else "Confirmar cierre") }
+        }
         if (!deletion.confirming) Button(onClick = { deletion = requestAccountDeletion(deletion) }) { Text("Eliminar cuenta") }
         else {
             Text("Esta accion elimina tu cuenta y todos tus datos personales de forma irreversible.", color = Color.Red)

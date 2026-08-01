@@ -398,6 +398,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                     else { editorSaveError = "No pudimos guardar tu perfil. Inténtalo de nuevo"; false }
                 },
                 onSaved = { updatedPrimary -> tokenStore.saveProfile(updatedPrimary); activeProfile = profileForUpdatedCatalog(updatedPrimary); screen = TrainingScreen.CATALOG },
+                onLogout = { runCatching { clearLocalAccountData(onUnauthorized, offlineStore::clear, ReminderStore(context)::clear); true }.getOrDefault(false) },
                 onDeleteAccount = {
                     val deleted = runCatching { GymApi.create().deleteAccount("Bearer $token") }.isSuccess
                     if (deleted) clearLocalAccountData(onUnauthorized, offlineStore::clear, ReminderStore(context)::clear)
