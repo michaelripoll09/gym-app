@@ -43,6 +43,7 @@ import okhttp3.MediaType.Companion.toMediaType
 interface GymApi {
     @POST("auth/register") suspend fun register(@Body request: RegisterRequest): AuthResponse
     @POST("auth/login") suspend fun login(@Body request: LoginRequest): AuthResponse
+    @DELETE("me") suspend fun deleteAccount(@Header("Authorization") authorization: String)
     @PUT("me/training-profile") suspend fun saveProfile(@Header("Authorization") authorization: String, @Body request: TrainingProfileRequest)
     @GET("me/training-profile") suspend fun trainingProfile(@Header("Authorization") authorization: String): TrainingProfileResponse
     @GET("exercises") suspend fun exercises(@Query("profile") profile: String): List<ExerciseResponse>

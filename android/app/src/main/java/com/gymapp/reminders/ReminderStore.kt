@@ -19,6 +19,7 @@ class ReminderStore(context: Context) {
     }
 
     fun savePlans(plans: List<WorkoutPlanResponse>) { preferences.edit().putString("plans", json.encodeToString(plans)).apply() }
+    fun clear() { preferences.edit().clear().apply() }
 
     fun readPlans(): List<WorkoutPlanResponse> = runCatching {
         json.decodeFromString<List<WorkoutPlanResponse>>(preferences.getString("plans", "[]") ?: "[]")

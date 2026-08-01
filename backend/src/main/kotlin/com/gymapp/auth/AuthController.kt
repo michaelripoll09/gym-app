@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Component
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestAttribute
 import org.springframework.web.bind.annotation.RequestBody
@@ -27,6 +28,12 @@ class AuthController(private val auth: AuthService) {
 
     @GetMapping("/me")
     fun me(@RequestAttribute("authenticatedUserId") userId: UUID) = auth.me(userId)
+
+    @DeleteMapping("/me")
+    fun deleteAccount(@RequestAttribute("authenticatedUserId") userId: UUID): ResponseEntity<Void> {
+        auth.deleteAccount(userId)
+        return ResponseEntity.noContent().build()
+    }
 
     @ExceptionHandler(DuplicateEmailException::class)
     fun duplicateEmail() = ResponseEntity.status(HttpStatus.CONFLICT).build<Void>()

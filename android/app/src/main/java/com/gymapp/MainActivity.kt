@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.gymapp.auth.AccessMode
 import com.gymapp.auth.AccessState
 import com.gymapp.auth.TokenStore
+import com.gymapp.account.clearLocalAccountData
 import com.gymapp.auth.accessErrorMessage
 import com.gymapp.auth.requiresSessionReset
 import com.gymapp.catalog.ExerciseCatalogScreen
@@ -397,6 +398,11 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                     else { editorSaveError = "No pudimos guardar tu perfil. Inténtalo de nuevo"; false }
                 },
                 onSaved = { updatedPrimary -> tokenStore.saveProfile(updatedPrimary); activeProfile = profileForUpdatedCatalog(updatedPrimary); screen = TrainingScreen.CATALOG },
+                onDeleteAccount = {
+                    val deleted = runCatching { GymApi.create().deleteAccount("Bearer $token") }.isSuccess
+                    if (deleted) clearLocalAccountData(onUnauthorized, offlineStore::clear, ReminderStore(context)::clear)
+                    deleted
+                },
                 onBack = { screen = TrainingScreen.CATALOG },
             )
         }

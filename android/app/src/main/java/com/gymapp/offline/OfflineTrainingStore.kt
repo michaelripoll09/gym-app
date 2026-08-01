@@ -12,6 +12,7 @@ class OfflineTrainingStore(context: Context) {
     fun cachedPlans(): List<WorkoutPlanResponse> = decode("active_plans")
     fun pendingSessions(): List<PendingSession> = OfflineSessionCodec.decode(preferences.getString("pending_sessions", "[]") ?: "[]")
     fun savePendingSessions(sessions: List<PendingSession>) { preferences.edit().putString("pending_sessions", OfflineSessionCodec.encode(sessions)).apply() }
+    fun clear() { preferences.edit().clear().apply() }
 
     private inline fun <reified T> decode(key: String): List<T> = runCatching { json.decodeFromString<List<T>>(preferences.getString(key, "[]") ?: "[]") }.getOrDefault(emptyList())
     private companion object { val json = Json { ignoreUnknownKeys = true } }
