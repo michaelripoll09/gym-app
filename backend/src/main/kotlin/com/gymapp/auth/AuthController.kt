@@ -27,6 +27,18 @@ class AuthController(private val auth: AuthService) {
     @PostMapping("/auth/login")
     fun login(@RequestBody request: LoginRequest) = auth.login(request)
 
+    @PostMapping("/auth/password-resets")
+    fun requestPasswordReset(@RequestBody request: PasswordResetRequest): ResponseEntity<Void> {
+        auth.requestPasswordReset(request)
+        return ResponseEntity.accepted().build()
+    }
+
+    @PostMapping("/auth/password-resets/confirm")
+    fun confirmPasswordReset(@RequestBody request: PasswordResetConfirmationRequest): ResponseEntity<Void> {
+        auth.confirmPasswordReset(request)
+        return ResponseEntity.noContent().build()
+    }
+
     @GetMapping("/me")
     fun me(@RequestAttribute("authenticatedUserId") userId: UUID) = auth.me(userId)
 
@@ -45,6 +57,9 @@ class AuthController(private val auth: AuthService) {
 
     @ExceptionHandler(InvalidPasswordChangeException::class)
     fun invalidPasswordChange() = ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).build<Void>()
+
+    @ExceptionHandler(InvalidPasswordResetException::class)
+    fun invalidPasswordReset() = ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).build<Void>()
 }
 
 @Component
