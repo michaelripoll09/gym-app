@@ -53,6 +53,7 @@ fun SessionHistoryScreen(
                         Text(session.planName, color = Color.White, fontSize = 20.sp)
                         Text("Fecha: ${session.startedAt}", color = Color.LightGray)
                         Text("${session.sets.size} series registradas", color = Color.LightGray)
+                        session.perceivedExertion?.let { Text("Esfuerzo percibido: $it/10", color = historyLime) }
                         Button(onClick = { onSelect(session) }) { Text("Ver detalle") }
                     }
                 }
@@ -67,6 +68,8 @@ private fun SessionHistoryDetail(session: WorkoutSessionResponse, onBack: () -> 
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(session.planName, color = historyLime, fontSize = 30.sp) }
         item { Text("Fecha de inicio: ${session.startedAt}", color = Color.LightGray) }
+        session.perceivedExertion?.let { effort -> item { Text("Esfuerzo percibido: $effort/10", color = historyLime) } }
+        session.note?.takeIf { it.isNotBlank() }?.let { note -> item { Text("Nota: $note", color = Color.LightGray) } }
         item { Button(onClick = onBack) { Text("Volver al historial") } }
         itemsIndexed(session.sets, key = { index, set -> "${set.exerciseName}-$index" }) { _, set ->
             Card(colors = CardDefaults.cardColors(containerColor = historyCard), modifier = Modifier.fillMaxWidth()) {

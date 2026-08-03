@@ -31,6 +31,8 @@ fun SessionScreen(
     error: String?,
     onRepetitionsChanged: (Int, String) -> Unit,
     onLoadChanged: (Int, String) -> Unit,
+    onPerceivedExertionChanged: (String) -> Unit,
+    onNoteChanged: (String) -> Unit,
     onFinish: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -42,6 +44,16 @@ fun SessionScreen(
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Entrenar · ${state.planName}", color = Color(0xFFB9F227), fontSize = 28.sp) }
         item { Button(onClick = onBack, enabled = !saving) { Text("Cancelar") } }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF273028))) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Cierre de sesion", color = Color.White, fontSize = 20.sp)
+                    Text("Opcional: registra como te sentiste al terminar.", color = Color.LightGray)
+                    OutlinedTextField(value = state.perceivedExertion, onValueChange = onPerceivedExertionChanged, label = { Text("Esfuerzo percibido (1-10)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                    OutlinedTextField(value = state.note, onValueChange = onNoteChanged, label = { Text("Nota de la sesion (opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                }
+            }
+        }
         if (timerStatus != RestTimerStatus.IDLE.name) item { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF273028))) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text("Descanso · $timerExercise", color = Color.White, fontSize = 20.sp); Text(if (timerStatus == RestTimerStatus.FINISHED.name) "Descanso terminado" else "${timerRemaining}s restantes", color = Color(0xFFB9F227), fontSize = 26.sp); if (timerStatus == RestTimerStatus.RUNNING.name) Button(onClick = { timerStatus = RestTimerStatus.PAUSED.name }) { Text("Pausar") }; if (timerStatus == RestTimerStatus.PAUSED.name) Button(onClick = { timerStatus = RestTimerStatus.RUNNING.name }) { Text("Reanudar") }; Button(onClick = { timerRemaining = timerConfigured; timerStatus = RestTimerStatus.RUNNING.name }) { Text("Reiniciar") }; Button(onClick = { timerRemaining = 0; timerStatus = RestTimerStatus.IDLE.name }) { Text("Omitir") } } } }
         itemsIndexed(state.sets, key = { index, set -> "${set.exerciseId}-$index" }) { index, set ->
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1C2022))) {

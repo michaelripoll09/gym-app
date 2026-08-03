@@ -325,6 +325,29 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(false, sessions.any { it.getValue("planName") == "Sesion ajena" })
     }
 
+    @Test
+    fun `persists an owners optional perceived effort and note and rejects an invalid effort`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sesion con esfuerzo", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val planId = body(plan).getValue("id")
+
+        val created = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10)), "perceivedExertion" to 8, "note" to "Buena tecnica"))
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val otherPlan = request("POST", "/api/v1/workout-plans", other, mapOf("name" to "Sesion privada", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        request("POST", "/api/v1/workout-plans/${body(otherPlan).getValue("id")}/sessions", other, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10)), "perceivedExertion" to 4, "note" to "Nota privada"))
+        val listed = request("GET", "/api/v1/workout-sessions", owner, null)
+        val invalid = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10)), "perceivedExertion" to 11))
+
+        assertEquals(HttpStatus.CREATED.value(), created.statusCode())
+        assertEquals(HttpStatus.OK.value(), listed.statusCode())
+        val session = (json.readValue(listed.body(), List::class.java) as List<Map<String, Any>>).single()
+        assertEquals(8, session.getValue("perceivedExertion"))
+        assertEquals("Buena tecnica", session.getValue("note"))
+        assertEquals("Sesion con esfuerzo", session.getValue("planName"))
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), invalid.statusCode())
+    }
+
     private fun registerToken(): String = (body(request("POST", "/api/v1/auth/register", null, mapOf("email" to "training-${UUID.randomUUID()}@example.com", "password" to "Passw0rd!", "acceptedTermsAt" to "2026-07-27T00:00:00Z"))).getValue("accessToken") as String)
     private fun seedExercise(id: String, sourceId: String, name: String, profile: String) {
         jdbc.update("insert into exercises (id, source_name, source_external_id, source_commit, name, spanish_instructions, published, source_file_sha256, attribution, review_status) values (?, 'test-fixture', ?, 'test', ?, 'Instrucción de prueba', true, '', null, 'APPROVED') on conflict (source_name, source_external_id) do nothing", UUID.fromString(id), sourceId, name)
