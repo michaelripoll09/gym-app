@@ -43,6 +43,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class BodyMeasurementResponse(val id: String, val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
 @Serializable data class ProgressGoalRequest(val type: String, val targetValue: Double, val targetDate: String? = null, val exerciseName: String? = null)
 @Serializable data class ProgressGoalResponse(val id: String, val type: String, val targetValue: Double, val targetDate: String? = null, val status: String, val currentValue: Double? = null, val exerciseName: String? = null, val completedAt: String? = null)
+@Serializable data class CalendarDayResponse(val date: String, val completed: Boolean, val scheduled: Boolean, val planName: String? = null, val setCount: Int = 0)
 
 interface GymApi {
     @POST("auth/register") suspend fun register(@Body request: RegisterRequest): AuthResponse
@@ -67,6 +68,7 @@ interface GymApi {
     @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): IdResponse
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
     @GET("training-summary/weekly") suspend fun weeklyTrainingSummary(@Header("Authorization") authorization: String): WeeklyTrainingSummaryResponse
+    @GET("training-calendar") suspend fun trainingCalendar(@Header("Authorization") authorization: String, @Query("month") month: String, @Query("zone") zone: String): List<CalendarDayResponse>
     @GET("training-progress/recommendations") suspend fun progressionRecommendations(@Header("Authorization") authorization: String): List<ExerciseProgressionResponse>
     @GET("body-measurements") suspend fun bodyMeasurements(@Header("Authorization") authorization: String): List<BodyMeasurementResponse>
     @POST("body-measurements") suspend fun createBodyMeasurement(@Header("Authorization") authorization: String, @Body request: BodyMeasurementRequest): BodyMeasurementResponse

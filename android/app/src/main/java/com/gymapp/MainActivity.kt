@@ -44,6 +44,9 @@ import com.gymapp.catalog.ExerciseCatalogScreen
 import com.gymapp.catalog.ExerciseCatalogState
 import com.gymapp.catalog.failedCatalog
 import com.gymapp.catalog.loadedCatalog
+import com.gymapp.calendar.TrainingCalendarScreen
+import com.gymapp.calendar.TrainingCalendarState
+import com.gymapp.calendar.calendarLoadError
 import com.gymapp.curated.CuratedPlansScreen
 import com.gymapp.curated.CuratedPlansState
 import com.gymapp.guided.GuidedRoutineScreen
@@ -113,6 +116,8 @@ import com.gymapp.reminders.ReminderDestination
 import com.gymapp.reminders.reminderDestination
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -284,7 +289,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { HOME, CATALOG, GUIDED, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, GOALS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
+private enum class TrainingScreen { HOME, CATALOG, GUIDED, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, CALENDAR, MEASUREMENTS, GOALS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
@@ -319,6 +324,10 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var refreshHistory by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
+    var calendarMonth by remember { mutableStateOf(YearMonth.now()) }
+    var calendar by remember { mutableStateOf(TrainingCalendarState()) }
+    var refreshCalendar by remember { mutableIntStateOf(0) }
+    var calendarBackScreen by remember { mutableStateOf(TrainingScreen.HOME) }
     var measurements by remember { mutableStateOf(BodyMeasurementsState()) }
     var refreshMeasurements by remember { mutableIntStateOf(0) }
     var editingMeasurement by remember { mutableStateOf<BodyMeasurementResponse?>(null) }
@@ -408,6 +417,23 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
         }
     }
+    LaunchedEffect(screen, calendarMonth, refreshCalendar) {
+        if (screen == TrainingScreen.CALENDAR) {
+            calendar = calendar.copy(loading = true, error = null)
+            runCatching {
+                GymApi.create().trainingCalendar(
+                    authorization = "Bearer $token",
+                    month = calendarMonth.toString(),
+                    zone = ZoneId.systemDefault().id,
+                )
+            }.onSuccess { days ->
+                calendar = TrainingCalendarState(days = days, loading = false)
+            }.onFailure {
+                if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
+                else calendar = calendarLoadError(calendar.days)
+            }
+        }
+    }
     LaunchedEffect(screen, refreshMeasurements) {
         if (screen == TrainingScreen.MEASUREMENTS) {
             measurements = BodyMeasurementsState(loading = true)
@@ -459,6 +485,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             onShowRoutines = { screen = TrainingScreen.ROUTINES },
             onShowCatalog = { screen = TrainingScreen.CATALOG },
             onShowProgress = { screen = TrainingScreen.PROGRESS },
+            onShowCalendar = { calendarBackScreen = TrainingScreen.HOME; screen = TrainingScreen.CALENDAR },
             onShowReminders = { screen = TrainingScreen.REMINDERS },
             onRetryToday = { refreshToday++ },
             onRetrySummary = { refreshWeeklySummary++ },
@@ -571,7 +598,8 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         TrainingScreen.HISTORY -> SessionHistoryScreen(history, pendingSessions, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
             if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
         })
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onGoals = { screen = TrainingScreen.GOALS }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onGoals = { screen = TrainingScreen.GOALS }, onCalendar = { calendarBackScreen = TrainingScreen.PROGRESS; screen = TrainingScreen.CALENDAR }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.CALENDAR -> TrainingCalendarScreen(month = calendarMonth, state = calendar, onMonth = { calendarMonth = it }, onRetry = { refreshCalendar++ }, onBack = { screen = calendarBackScreen })
         TrainingScreen.GOALS -> GoalsScreen(goals, goalsLoading, goalsError, onSave = { request, id -> scope.launch { if(id==null) runCatching { GymApi.create().createProgressGoal("Bearer $token",request) }.onSuccess { goals=listOf(it)+goals }.onFailure { goalsError="No pudimos guardar el objetivo." } else runCatching { GymApi.create().updateProgressGoal("Bearer $token",id,request) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos actualizar el objetivo." } } }, onComplete = { goal -> scope.launch { runCatching { GymApi.create().completeProgressGoal("Bearer $token",goal.id) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos completar el objetivo." } } }, onDelete = { goal -> scope.launch { runCatching { GymApi.create().deleteProgressGoal("Bearer $token",goal.id) }.onSuccess { goals=goals.filterNot { it.id==goal.id } }.onFailure { goalsError="No pudimos eliminar el objetivo." } } }, onRetry = { refreshGoals++ }, onBack = { screen=TrainingScreen.PROGRESS })
         TrainingScreen.MEASUREMENTS -> MeasurementsScreen(
             state = measurements,

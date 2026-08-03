@@ -21,7 +21,7 @@ private val progressLime = Color(0xFFB9F227)
 private val progressCard = Color(0xFF1C2022)
 
 @Composable
-fun TrainingProgressScreen(state: TrainingProgressState, pendingCount: Int, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onMeasurements: () -> Unit, onGoals: () -> Unit, onBack: () -> Unit) {
+fun TrainingProgressScreen(state: TrainingProgressState, pendingCount: Int, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onMeasurements: () -> Unit, onGoals: () -> Unit, onCalendar: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Progreso", color = progressLime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver a mis rutinas") } }
@@ -29,6 +29,7 @@ fun TrainingProgressScreen(state: TrainingProgressState, pendingCount: Int, onRe
         item { Button(onClick = onProgression) { Text("Ver progresión guiada") } }
         item { Button(onClick = onMeasurements) { Text("Ver medidas corporales") } }
         item { Button(onClick = onGoals) { Text("Ver mis objetivos") } }
+        item { Button(onClick = onCalendar) { Text("Ver calendario de adherencia") } }
         if (pendingCount > 0) item { Text("$pendingCount sesión(es) pendiente(s) no se incluyen hasta sincronizarlas.", color = Color(0xFFFFD180)) }
         when (state.content()) {
             ProgressContent.LOADING -> item { Text("Calculando tu progreso…", color = Color.LightGray) }

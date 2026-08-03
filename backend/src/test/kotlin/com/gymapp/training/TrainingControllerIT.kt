@@ -206,6 +206,26 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), archived.statusCode())
         assertEquals(HttpStatus.FORBIDDEN.value(), foreign.statusCode())
     }
+
+    @Test
+    fun `returns an owners monthly completed history and active schedule only`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Calendario propio", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val planId = body(plan).getValue("id") as String
+        request("PUT", "/api/v1/workout-plans/$planId/activate", owner, null)
+        val session = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10))))
+        jdbc.update("update workout_sessions set started_at=? where id=?", OffsetDateTime.parse("2026-08-03T10:00:00Z"), UUID.fromString(body(session).getValue("id") as String))
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val response = request("GET", "/api/v1/training-calendar?month=2026-08&zone=UTC", owner, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode(), response.body())
+        val days = json.readValue(response.body(), List::class.java) as List<Map<String, Any>>
+        assertEquals(31, days.size)
+        assertEquals(true, days.single { it["date"] == "2026-08-03" }["completed"])
+        assertEquals(true, days.single { it["date"] == "2026-08-10" }["scheduled"])
+        assertEquals(false, days.any { it["planName"] == "Sesion ajena" })
+    }
     @Test
     fun `updates an owners workout plan without creating another`() {
         val owner = registerToken(); saveCalisthenicsProfile(owner)
