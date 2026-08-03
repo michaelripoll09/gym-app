@@ -118,6 +118,29 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
     }
 
     @Test
+    fun `summarizes only the active routine when one is selected`() {
+        val token = registerToken(); saveCalisthenicsProfile(token)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val active = request("POST", "/api/v1/workout-plans", token, mapOf("name" to "Fuerza activa", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val inactive = request("POST", "/api/v1/workout-plans", token, mapOf("name" to "Cardio alterno", "days" to listOf(
+            mapOf("name" to "Martes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))),
+            mapOf("name" to "Jueves", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))),
+        )))
+        val activeId = body(active).getValue("id") as String
+        val inactiveId = body(inactive).getValue("id") as String
+        request("PUT", "/api/v1/workout-plans/$activeId/activate", token, null)
+        request("POST", "/api/v1/workout-plans/$activeId/sessions", token, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 20.0))))
+        request("POST", "/api/v1/workout-plans/$inactiveId/sessions", token, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 90.0))))
+
+        val summary = body(request("GET", "/api/v1/training-summary/weekly", token, null))
+
+        assertEquals(1, summary.getValue("completedSessions"))
+        assertEquals(1, summary.getValue("scheduledSessions"))
+        assertEquals(200.0, summary.getValue("volumeKg"))
+        assertEquals("Fuerza activa", (summary.getValue("nextSession") as Map<*, *>)["planName"])
+    }
+
+    @Test
     fun `returns increase maintain and reduce recommendations excluding archived routines`() {
         val owner = registerToken(); saveCalisthenicsProfile(owner)
         val exercises = listOf("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000004").map(UUID::fromString)
@@ -158,6 +181,30 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(emptyList<Any>(), json.readValue(active.body(), List::class.java))
         assertEquals(1, (json.readValue(sessions.body(), List::class.java) as List<*>).size)
         assertEquals(HttpStatus.NO_CONTENT.value(), restored.statusCode())
+    }
+
+    @Test
+    fun `selects one active plan and rejects archived or another users plans`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val first = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Fuerza", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val second = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Cardio", "days" to listOf(mapOf("name" to "Martes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val firstId = body(first).getValue("id") as String
+        val secondId = body(second).getValue("id") as String
+
+        val activateFirst = request("PUT", "/api/v1/workout-plans/$firstId/activate", owner, null)
+        val activateSecond = request("PUT", "/api/v1/workout-plans/$secondId/activate", owner, null)
+        val listed = json.readValue(request("GET", "/api/v1/workout-plans", owner, null).body(), List::class.java) as List<Map<String, Any>>
+        request("PUT", "/api/v1/workout-plans/$firstId/archive", owner, null)
+        val archived = request("PUT", "/api/v1/workout-plans/$firstId/activate", owner, null)
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val foreign = request("PUT", "/api/v1/workout-plans/$secondId/activate", other, null)
+
+        assertEquals(HttpStatus.NO_CONTENT.value(), activateFirst.statusCode())
+        assertEquals(HttpStatus.NO_CONTENT.value(), activateSecond.statusCode())
+        assertEquals(listOf("Cardio"), listed.filter { it["active"] == true }.map { it.getValue("name") })
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), archived.statusCode())
+        assertEquals(HttpStatus.FORBIDDEN.value(), foreign.statusCode())
     }
     @Test
     fun `updates an owners workout plan without creating another`() {

@@ -86,7 +86,7 @@ private fun RowScope.NumberField(label: String, value: Int, onValueChange: (Int)
 }
 
 @Composable
-fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error: String?, archived: Boolean, pendingArchive: WorkoutPlanResponse?, offline: Boolean, pendingCount: Int, onStart: (WorkoutPlanResponse) -> Unit, onEdit: (WorkoutPlanResponse) -> Unit, onArchive: (WorkoutPlanResponse) -> Unit, onConfirmArchive: () -> Unit, onCancelArchive: () -> Unit, onRestore: (WorkoutPlanResponse) -> Unit, onShowArchived: () -> Unit, onShowActive: () -> Unit, onHistory: () -> Unit, onProgress: () -> Unit, onShowReminders: () -> Unit, onShowPending: () -> Unit, onBack: () -> Unit) {
+fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error: String?, archived: Boolean, pendingArchive: WorkoutPlanResponse?, activatingPlanId: String?, offline: Boolean, pendingCount: Int, onStart: (WorkoutPlanResponse) -> Unit, onEdit: (WorkoutPlanResponse) -> Unit, onArchive: (WorkoutPlanResponse) -> Unit, onConfirmArchive: () -> Unit, onCancelArchive: () -> Unit, onActivate: (WorkoutPlanResponse) -> Unit, onRestore: (WorkoutPlanResponse) -> Unit, onShowArchived: () -> Unit, onShowActive: () -> Unit, onHistory: () -> Unit, onProgress: () -> Unit, onShowReminders: () -> Unit, onShowPending: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(if (archived) "Rutinas archivadas" else "Mis rutinas", color = lime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver al catálogo") } }
@@ -104,11 +104,17 @@ fun RoutineListScreen(plans: List<WorkoutPlanResponse>, loading: Boolean, error:
             Card(colors = CardDefaults.cardColors(containerColor = card)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(plan.name, color = Color.White, fontSize = 20.sp)
+                    if (plan.active) Text("Rutina activa", color = lime)
                     plan.days.forEach { day ->
                         Text("${day.name}: ${day.exercises.joinToString { "${it.name} · ${it.sets}×${it.minRepetitions}-${it.maxRepetitions} · ${it.restSeconds}s" }}", color = Color.LightGray)
                     }
                     if (archived) Button(onClick = { onRestore(plan) }) { Text("Restaurar rutina") }
-                    else { Button(onClick = { onStart(plan) }) { Text("Iniciar rutina") }; Button(onClick = { onEdit(plan) }) { Text("Editar rutina") }; Button(onClick = { onArchive(plan) }) { Text("Archivar rutina") } }
+                    else {
+                        if (!plan.active) Button(onClick = { onActivate(plan) }, enabled = activatingPlanId == null) { Text(if (activatingPlanId == plan.id) "Activandoâ€¦" else "Activar rutina") }
+                        Button(onClick = { onStart(plan) }) { Text("Iniciar rutina") }
+                        Button(onClick = { onEdit(plan) }) { Text("Editar rutina") }
+                        Button(onClick = { onArchive(plan) }) { Text("Archivar rutina") }
+                    }
                 }
             }
         }

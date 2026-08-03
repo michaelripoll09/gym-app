@@ -4,7 +4,7 @@ import com.gymapp.network.WorkoutPlanResponse
 import java.time.DayOfWeek
 
 fun plansForToday(plans: List<WorkoutPlanResponse>, day: String): List<WorkoutPlanResponse> =
-    plans.filter { plan -> plan.days.any { it.name == day } }
+    plans.filter { it.active }.ifEmpty { plans }.filter { plan -> plan.days.any { it.name == day } }
 
 fun spanishDayName(day: DayOfWeek): String = when (day) {
     DayOfWeek.MONDAY -> "Lunes"
@@ -19,6 +19,7 @@ fun spanishDayName(day: DayOfWeek): String = when (day) {
 data class TodayTrainingState(
     val loading: Boolean = true,
     val plans: List<WorkoutPlanResponse> = emptyList(),
+    val hasActivePlan: Boolean = false,
     val error: String? = null
 )
 

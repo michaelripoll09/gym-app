@@ -10,7 +10,7 @@ import java.time.ZoneId
 
 class ReminderStateTest {
     private val zone = ZoneId.of("UTC")
-    private val mondayRoutine = WorkoutPlanResponse("plan-1", "Fuerza", listOf(WorkoutPlanDayResponse("Lunes", emptyList())))
+    private val mondayRoutine = WorkoutPlanResponse("plan-1", "Fuerza", listOf(WorkoutPlanDayResponse("Lunes", emptyList())), active = true)
 
     @Test fun `creates one upcoming reminder at the selected time for a scheduled routine`() {
         val reminders = upcomingReminders(listOf(mondayRoutine), ReminderSettings(enabled = true, hour = 18, minute = 30), Instant.parse("2026-08-02T12:00:00Z"), zone)
@@ -25,7 +25,7 @@ class ReminderStateTest {
     }
 
     @Test fun `moves today reminder to next week when its selected time has passed`() {
-        val todayPlan = WorkoutPlanResponse("plan-3", "Cardio", listOf(WorkoutPlanDayResponse("Domingo", emptyList())))
+        val todayPlan = WorkoutPlanResponse("plan-3", "Cardio", listOf(WorkoutPlanDayResponse("Domingo", emptyList())), active = true)
         val reminder = upcomingReminders(listOf(todayPlan), ReminderSettings(enabled = true, hour = 8), Instant.parse("2026-08-02T12:00:00Z"), zone).single()
         assertEquals(Instant.parse("2026-08-09T08:00:00Z"), reminder.triggerAt)
     }
@@ -44,11 +44,17 @@ class ReminderStateTest {
     @Test fun `replaces the scheduled routine when active routines change`() {
         val gateway = FakeAlarmGateway()
         val controller = ReminderScheduleController(gateway, zone)
-        val sundayRoutine = WorkoutPlanResponse("plan-2", "Cardio", listOf(WorkoutPlanDayResponse("Domingo", emptyList())))
+        val sundayRoutine = WorkoutPlanResponse("plan-2", "Cardio", listOf(WorkoutPlanDayResponse("Domingo", emptyList())), active = true)
         controller.apply(listOf(mondayRoutine), ReminderSettings(enabled = true), Instant.parse("2026-08-02T12:00:00Z"))
         controller.apply(listOf(sundayRoutine), ReminderSettings(enabled = true), Instant.parse("2026-08-02T12:00:00Z"))
         assertEquals(2, gateway.cancelCalls)
         assertEquals(listOf("Cardio"), gateway.scheduled.map { it.planName })
+    }
+
+    @Test fun `schedules reminders only for the active routine`() {
+        val inactive = WorkoutPlanResponse("plan-2", "Cardio", listOf(WorkoutPlanDayResponse("Lunes", emptyList())))
+        val reminders = upcomingReminders(listOf(mondayRoutine, inactive), ReminderSettings(enabled = true), Instant.parse("2026-08-02T12:00:00Z"), zone)
+        assertEquals(listOf("Fuerza"), reminders.map { it.planName })
     }
 
     private class FakeAlarmGateway : ReminderAlarmGateway {

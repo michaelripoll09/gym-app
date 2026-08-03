@@ -21,7 +21,7 @@ data class CreateWorkoutSessionRequest(val sets: List<SetLogRequest>)
 data class IdResponse(val id: UUID)
 data class WorkoutPlanExerciseResponse(val exerciseId: UUID, val name: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 data class WorkoutPlanDayResponse(val name: String, val exercises: List<WorkoutPlanExerciseResponse>)
-data class WorkoutPlanResponse(val id: UUID, val name: String, val days: List<WorkoutPlanDayResponse>)
+data class WorkoutPlanResponse(val id: UUID, val name: String, val days: List<WorkoutPlanDayResponse>, val active: Boolean = false)
 data class SessionSetResponse(val exerciseName: String, val repetitions: Int, val loadKg: Double? = null)
 data class WorkoutSessionResponse(val id: UUID, val planName: String, val startedAt: String, val sets: List<SessionSetResponse>)
 
@@ -34,6 +34,7 @@ class TrainingController(private val service: TrainingService) {
     @PutMapping("/{planId}") fun update(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID, @RequestBody request: CreateWorkoutPlanRequest): ResponseEntity<Void> { service.updatePlan(userId, planId, request); return ResponseEntity.noContent().build() }
     @PutMapping("/{planId}/archive") fun archive(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID): ResponseEntity<Void> { service.archivePlan(userId, planId, true); return ResponseEntity.noContent().build() }
     @PutMapping("/{planId}/restore") fun restore(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID): ResponseEntity<Void> { service.archivePlan(userId, planId, false); return ResponseEntity.noContent().build() }
+    @PutMapping("/{planId}/activate") fun activate(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID): ResponseEntity<Void> { service.activatePlan(userId, planId); return ResponseEntity.noContent().build() }
     @PostMapping("/{planId}/sessions") fun session(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID, @RequestBody request: CreateWorkoutSessionRequest) = ResponseEntity.status(HttpStatus.CREATED).body(IdResponse(service.createSession(userId, planId, request)))
     @ExceptionHandler(IllegalArgumentException::class) fun invalidRequest() = ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).build<Void>()
     @ExceptionHandler(PlanAccessDeniedException::class) fun forbidden() = ResponseEntity.status(HttpStatus.FORBIDDEN).build<Void>()

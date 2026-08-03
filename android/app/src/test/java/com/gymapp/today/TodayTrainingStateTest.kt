@@ -14,6 +14,12 @@ class TodayTrainingStateTest {
     }
     @Test fun `ignores unknown day names`() { assertEquals(emptyList<WorkoutPlanResponse>(), plansForToday(listOf(WorkoutPlanResponse("1", "Invalida", listOf(WorkoutPlanDayResponse("Nunca", emptyList())))), "Lunes")) }
 
+    @Test fun `prioritizes the active routine over other routines scheduled today`() {
+        val active = WorkoutPlanResponse("1", "Fuerza", listOf(WorkoutPlanDayResponse("Lunes", emptyList())), active = true)
+        val other = WorkoutPlanResponse("2", "Cardio", listOf(WorkoutPlanDayResponse("Lunes", emptyList())))
+        assertEquals(listOf(active), plansForToday(listOf(active, other), "Lunes"))
+    }
+
     @Test fun `maps every local day to its Spanish routine name`() {
         assertEquals(
             listOf("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"),

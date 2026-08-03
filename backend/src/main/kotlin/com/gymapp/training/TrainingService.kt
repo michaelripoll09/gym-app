@@ -14,7 +14,7 @@ class TrainingService(private val jdbc: JdbcTemplate) {
         WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble()) }, sessionId))
     }, userId)
 
-    fun listPlans(userId: UUID, archived: Boolean = false): List<WorkoutPlanResponse> = jdbc.query("select id, name from workout_plans where user_id = ? and archived=? order by created_at desc", { planRows, _ ->
+    fun listPlans(userId: UUID, archived: Boolean = false): List<WorkoutPlanResponse> = jdbc.query("select p.id, p.name, exists (select 1 from active_workout_plans a where a.user_id=p.user_id and a.plan_id=p.id) as active from workout_plans p where p.user_id = ? and p.archived=? order by p.created_at desc", { planRows, _ ->
         WorkoutPlanResponse(
             id = planRows.getObject("id", UUID::class.java),
             name = planRows.getString("name"),
@@ -32,7 +32,8 @@ class TrainingService(private val jdbc: JdbcTemplate) {
                         )
                     }, dayRows.getObject("id", UUID::class.java))
                 )
-            }, planRows.getObject("id", UUID::class.java))
+            }, planRows.getObject("id", UUID::class.java)),
+            active = planRows.getBoolean("active")
         )
     }, userId, archived)
 
@@ -51,8 +52,15 @@ class TrainingService(private val jdbc: JdbcTemplate) {
         jdbc.update("delete from workout_plan_days where plan_id=?", planId)
         writePlanDays(planId, request, profile)
     }
-    fun archivePlan(userId: UUID, planId: UUID, archived: Boolean) {
+    @Transactional fun archivePlan(userId: UUID, planId: UUID, archived: Boolean) {
         if (jdbc.update("update workout_plans set archived=? where id=? and user_id=?", archived, planId, userId) != 1) throw PlanAccessDeniedException()
+        if (archived) jdbc.update("delete from active_workout_plans where user_id=? and plan_id=?", userId, planId)
+    }
+    @Transactional fun activatePlan(userId: UUID, planId: UUID) {
+        val plan = jdbc.query("select archived from workout_plans where id=? and user_id=?", { rows, _ -> rows.getBoolean("archived") }, planId, userId)
+        if (plan.isEmpty()) throw PlanAccessDeniedException()
+        require(!plan.single())
+        jdbc.update("insert into active_workout_plans (user_id, plan_id) values (?, ?) on conflict (user_id) do update set plan_id=excluded.plan_id", userId, planId)
     }
     private fun writePlanDays(planId: UUID, request: CreateWorkoutPlanRequest, profile: String) {
         request.days.forEachIndexed { position, day ->

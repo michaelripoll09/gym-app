@@ -32,22 +32,11 @@ class WeeklySummaryService(private val jdbc: JdbcTemplate) {
         val zone = ZoneId.systemDefault()
         val weekStart = today.with(DayOfWeek.MONDAY).atStartOfDay(zone).toOffsetDateTime()
         val nextWeekStart = weekStart.plusDays(7)
-        val completed = jdbc.queryForObject(
-            "select count(*) from workout_sessions where user_id=? and started_at >= ? and started_at < ?",
-            Int::class.java, userId, weekStart, nextWeekStart,
-        ) ?: 0
-        val scheduled = jdbc.queryForObject(
-            "select count(*) from workout_plan_days d join workout_plans p on p.id=d.plan_id where p.user_id=? and p.archived=false",
-            Int::class.java, userId,
-        ) ?: 0
-        val volume = jdbc.queryForObject(
-            "select coalesce(sum(l.repetitions * coalesce(l.load_kg, 0)), 0) from workout_set_logs l join workout_sessions s on s.id=l.session_id join workout_plans p on p.id=s.plan_id where s.user_id=? and p.archived=false and s.started_at >= ? and s.started_at < ?",
-            java.math.BigDecimal::class.java, userId, weekStart, nextWeekStart,
-        )?.toDouble() ?: 0.0
-        val next = jdbc.query(
-            "select p.name as plan_name, d.name as day_name, d.position from workout_plan_days d join workout_plans p on p.id=d.plan_id where p.user_id=? and p.archived=false order by p.created_at desc, d.position",
-            { rows, _ -> NextWeeklySessionResponse(rows.getString("plan_name"), rows.getString("day_name")) }, userId,
-        ).minByOrNull { daysUntil(today.dayOfWeek, it.dayName) }
+        val activePlanId = jdbc.query("select plan_id from active_workout_plans where user_id=?", { rows, _ -> rows.getObject("plan_id", UUID::class.java) }, userId).firstOrNull()
+        val completed = (if (activePlanId == null) jdbc.queryForObject("select count(*) from workout_sessions where user_id=? and started_at >= ? and started_at < ?", Int::class.java, userId, weekStart, nextWeekStart) else jdbc.queryForObject("select count(*) from workout_sessions where user_id=? and plan_id=? and started_at >= ? and started_at < ?", Int::class.java, userId, activePlanId, weekStart, nextWeekStart)) ?: 0
+        val scheduled = (if (activePlanId == null) jdbc.queryForObject("select count(*) from workout_plan_days d join workout_plans p on p.id=d.plan_id where p.user_id=? and p.archived=false", Int::class.java, userId) else jdbc.queryForObject("select count(*) from workout_plan_days d join workout_plans p on p.id=d.plan_id where p.user_id=? and p.id=? and p.archived=false", Int::class.java, userId, activePlanId)) ?: 0
+        val volume = if (activePlanId == null) jdbc.queryForObject("select coalesce(sum(l.repetitions * coalesce(l.load_kg, 0)), 0) from workout_set_logs l join workout_sessions s on s.id=l.session_id join workout_plans p on p.id=s.plan_id where s.user_id=? and p.archived=false and s.started_at >= ? and s.started_at < ?", java.math.BigDecimal::class.java, userId, weekStart, nextWeekStart)?.toDouble() ?: 0.0 else jdbc.queryForObject("select coalesce(sum(l.repetitions * coalesce(l.load_kg, 0)), 0) from workout_set_logs l join workout_sessions s on s.id=l.session_id join workout_plans p on p.id=s.plan_id where s.user_id=? and p.id=? and p.archived=false and s.started_at >= ? and s.started_at < ?", java.math.BigDecimal::class.java, userId, activePlanId, weekStart, nextWeekStart)?.toDouble() ?: 0.0
+        val next = jdbc.query(if (activePlanId == null) "select p.name as plan_name, d.name as day_name, d.position from workout_plan_days d join workout_plans p on p.id=d.plan_id where p.user_id=? and p.archived=false order by p.created_at desc, d.position" else "select p.name as plan_name, d.name as day_name, d.position from workout_plan_days d join workout_plans p on p.id=d.plan_id where p.user_id=? and p.id=? and p.archived=false order by p.created_at desc, d.position", { rows, _ -> NextWeeklySessionResponse(rows.getString("plan_name"), rows.getString("day_name")) }, *listOfNotNull(userId, activePlanId).toTypedArray()).minByOrNull { daysUntil(today.dayOfWeek, it.dayName) }
         return WeeklyTrainingSummaryResponse(
             completedSessions = completed,
             scheduledSessions = scheduled,
