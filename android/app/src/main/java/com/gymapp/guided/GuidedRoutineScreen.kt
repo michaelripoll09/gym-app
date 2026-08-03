@@ -41,6 +41,24 @@ fun GuidedRoutineScreen(
     onBack: () -> Unit,
 ) {
     var picker by remember { mutableStateOf<Pair<Int, Int?>?>(null) }
+    var pickerQuery by remember { mutableStateOf("") }
+    if (picker != null && draft != null) {
+        val (dayIndex, exerciseIndex) = picker!!
+        val matches = filterCompatibleExercises(catalog, pickerQuery)
+        LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { Text(if (exerciseIndex == null) "Añadir ejercicio compatible" else "Sustituir ejercicio", color = lime, fontSize = 28.sp) }
+            item { OutlinedTextField(pickerQuery, { pickerQuery = it }, label = { Text("Buscar ejercicio") }, modifier = Modifier.fillMaxWidth()) }
+            if (matches.isEmpty()) item { Text("No hay coincidencias compatibles.", color = Color.LightGray) }
+            items(matches, key = { it.id }) { exercise ->
+                Button(onClick = {
+                    onDraftChanged(if (exerciseIndex == null) draft.addExercise(dayIndex, exercise) else draft.replaceExercise(dayIndex, exerciseIndex, exercise))
+                    picker = null
+                }) { Text(exercise.name) }
+            }
+            item { Button(onClick = { picker = null }) { Text("Cancelar") } }
+        }
+        return
+    }
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Rutina guiada", color = lime, fontSize = 30.sp) }
         item { Text("Esta es una propuesta editable: nada se guardará hasta que pulses Crear esta rutina.", color = Color.LightGray) }
@@ -63,15 +81,6 @@ fun GuidedRoutineScreen(
                             Button(onClick = { picker = dayIndex to null }) { Text("Añadir ejercicio") }
                             Button(onClick = { onDraftChanged(draft.removeDay(dayIndex)) }) { Text("Quitar día") }
                         }
-                    }
-                }
-                picker?.let { (dayIndex, exerciseIndex) ->
-                    item { Text(if (exerciseIndex == null) "Elige un ejercicio compatible" else "Sustituye por un ejercicio compatible", color = lime) }
-                    items(catalog, key = { it.id }) { exercise ->
-                        Button(onClick = {
-                            val updated = if (exerciseIndex == null) draft.addExercise(dayIndex, exercise) else draft.replaceExercise(dayIndex, exerciseIndex, exercise)
-                            onDraftChanged(updated); picker = null
-                        }) { Text(exercise.name) }
                     }
                 }
                 item { Text("Añadir día", color = lime) }

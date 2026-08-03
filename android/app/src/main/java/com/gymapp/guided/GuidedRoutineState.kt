@@ -54,3 +54,4 @@ data class GuidedRoutineDraft(val name: String, val explanation: String, val day
 
 fun GuidedRoutineProposalResponse.toCreateWorkoutPlanRequest() = GuidedRoutineDraft.from(this).toCreateWorkoutPlanRequest()
 fun discardGuidedRoutine(): GuidedRoutineProposalResponse? = null
+fun filterCompatibleExercises(catalog: List<ExerciseResponse>, query: String) = catalog.filter { it.name.contains(query.trim(), ignoreCase = true) }
