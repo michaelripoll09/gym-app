@@ -9,9 +9,9 @@ class PlanAccessDeniedException : RuntimeException()
 
 @Service
 class TrainingService(private val jdbc: JdbcTemplate) {
-    fun listSessions(userId: UUID): List<WorkoutSessionResponse> = jdbc.query("select s.id, s.started_at, p.name from workout_sessions s join workout_plans p on p.id=s.plan_id where s.user_id=? order by s.started_at desc", { rows, _ ->
+    fun listSessions(userId: UUID): List<WorkoutSessionResponse> = jdbc.query("select s.id, s.started_at, p.name, s.perceived_exertion, s.note from workout_sessions s join workout_plans p on p.id=s.plan_id where s.user_id=? order by s.started_at desc", { rows, _ ->
         val sessionId = rows.getObject("id", UUID::class.java)
-        WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble()) }, sessionId))
+        WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble()) }, sessionId), (rows.getObject("perceived_exertion") as? Number)?.toInt(), rows.getString("note"))
     }, userId)
 
     fun listPlans(userId: UUID, archived: Boolean = false): List<WorkoutPlanResponse> = jdbc.query("select p.id, p.name, exists (select 1 from active_workout_plans a where a.user_id=p.user_id and a.plan_id=p.id) as active from workout_plans p where p.user_id = ? and p.archived=? order by p.created_at desc", { planRows, _ ->
@@ -76,7 +76,8 @@ class TrainingService(private val jdbc: JdbcTemplate) {
     @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): UUID {
         if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
         require(request.sets.isNotEmpty() && request.sets.all { it.repetitions > 0 && (it.loadKg == null || it.loadKg >= 0) })
-        val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id) values (?, ?, ?)", sessionId, planId, userId)
+        require(request.perceivedExertion == null || request.perceivedExertion in 1..10)
+        val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id, perceived_exertion, note) values (?, ?, ?, ?, ?)", sessionId, planId, userId, request.perceivedExertion, request.note?.trim()?.takeIf { it.isNotEmpty() })
         request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions, load_kg) values (?, ?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions, set.loadKg) }; return sessionId
     }
 }

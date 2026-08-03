@@ -566,10 +566,18 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             session = session?.updateRepetitions(index, value)
         }, onLoadChanged = { index, value ->
             session = session?.updateLoadKg(index, value)
+        }, onPerceivedExertionChanged = { value ->
+            session = session?.updatePerceivedExertion(value)
+        }, onNoteChanged = { value ->
+            session = session?.updateNote(value)
         }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
                 sessionSaving = true; sessionError = null
-                val request = CreateWorkoutSessionRequest(currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) })
+                val request = CreateWorkoutSessionRequest(
+                    sets = currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) },
+                    perceivedExertion = currentSession.perceivedExertion.toIntOrNull(),
+                    note = currentSession.note.trim().takeIf { it.isNotEmpty() },
+                )
                 runCatching { GymApi.create().createWorkoutSession("Bearer $token", currentSession.planId, request) }.onSuccess {
                     refreshPlans++; refreshToday++; refreshWeeklySummary++; refreshHistory++; refreshProgress++; screen = sessionReturnScreen
                 }.onFailure {

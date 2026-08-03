@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OfflineSessionQueueTest {
-    private val pending = PendingSession("local-1", "plan-1", "Fuerza", "2026-08-01T12:00:00Z", CreateWorkoutSessionRequest(listOf(SetLogRequest("exercise-1", 8, 40.0))))
+    private val pending = PendingSession("local-1", "plan-1", "Fuerza", "2026-08-01T12:00:00Z", CreateWorkoutSessionRequest(listOf(SetLogRequest("exercise-1", 8, 40.0)), perceivedExertion = 8, note = "Buena tecnica"))
 
     @Test fun `adds a completed offline session to the pending queue`() {
         assertEquals(listOf(pending), enqueuePendingSession(emptyList(), pending))
@@ -28,5 +28,11 @@ class OfflineSessionQueueTest {
 
     @Test fun `round trips pending sessions through persistent storage format`() {
         assertEquals(listOf(pending), OfflineSessionCodec.decode(OfflineSessionCodec.encode(listOf(pending))))
+    }
+
+    @Test fun `preserves optional session feedback while offline`() {
+        val restored = OfflineSessionCodec.decode(OfflineSessionCodec.encode(listOf(pending))).single()
+        assertEquals(8, restored.request.perceivedExertion)
+        assertEquals("Buena tecnica", restored.request.note)
     }
 }
