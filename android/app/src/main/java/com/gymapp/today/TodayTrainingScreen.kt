@@ -39,7 +39,7 @@ fun TodayTrainingScreen(
         if (!state.loading && state.plans.isEmpty() && state.error == null) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("No tienes una rutina programada para hoy.", color = Color.LightGray)
+                    Text(if (state.hasActivePlan) "Tu rutina activa no tiene entrenamiento programado para hoy." else "No tienes una rutina activa. Elige una desde Mis rutinas.", color = Color.LightGray)
                     Button(onClick = onShowRoutines) { Text("Ir a Mis rutinas") }
                 }
             }

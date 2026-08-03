@@ -25,7 +25,7 @@ class ReminderScheduleController(private val gateway: ReminderAlarmGateway, priv
 fun upcomingReminders(plans: List<WorkoutPlanResponse>, settings: ReminderSettings, now: Instant, zone: ZoneId = ZoneId.systemDefault()): List<ScheduledReminder> {
     if (!settings.enabled) return emptyList()
     val today = now.atZone(zone).toLocalDate()
-    return plans.flatMap { plan ->
+    return plans.filter { it.active }.flatMap { plan ->
         plan.days.mapNotNull { day ->
             spanishDayToDayOfWeek(day.name)?.let { scheduledDay ->
                 val date = nextDateFor(scheduledDay, today, now, settings, zone)

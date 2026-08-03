@@ -300,6 +300,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var plansLoading by remember { mutableStateOf(false) }
     var plansError by remember { mutableStateOf<String?>(null) }
     var plansOffline by remember { mutableStateOf(false) }
+    var activatingPlanId by remember { mutableStateOf<String?>(null) }
     var refreshPlans by remember { mutableIntStateOf(0) }
     var archivedPlans by remember { mutableStateOf(false) }
     var pendingArchive by remember { mutableStateOf<WorkoutPlanResponse?>(null) }
@@ -382,10 +383,10 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             today = today.copy(loading = true, error = null)
             val day = spanishDayName(LocalDate.now().dayOfWeek)
             runCatching { GymApi.create().workoutPlans("Bearer $token") }
-                .onSuccess { offlineStore.cachePlans(it); today = TodayTrainingState(loading = false, plans = plansForToday(it, day)) }
+                .onSuccess { offlineStore.cachePlans(it); today = TodayTrainingState(loading = false, plans = plansForToday(it, day), hasActivePlan = it.any { plan -> plan.active }) }
                 .onFailure {
                     if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
-                    else if (isOffline(context)) today = TodayTrainingState(loading = false, plans = plansForToday(offlineStore.cachedPlans(), day))
+                    else if (isOffline(context)) { val cached = offlineStore.cachedPlans(); today = TodayTrainingState(loading = false, plans = plansForToday(cached, day), hasActivePlan = cached.any { plan -> plan.active }) }
                     else today = todayLoadError(today.plans)
                 }
         }
@@ -506,9 +507,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 saving = false
             }
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
-        TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, plansOffline, pendingSessions.size, onStart = { plan ->
+        TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, activatingPlanId, plansOffline, pendingSessions.size, onStart = { plan ->
             session = SessionDraftState.from(plan); sessionError = null; sessionReturnScreen = TrainingScreen.ROUTINES; screen = TrainingScreen.SESSION
-        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onShowPending = { pendingSyncMessage = null; screen = TrainingScreen.PENDING_SESSIONS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
+        }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onActivate = { plan -> scope.launch { activatingPlanId = plan.id; plansError = null; runCatching { GymApi.create().activateWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else plansError = "No pudimos activar la rutina" }; activatingPlanId = null } }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onShowPending = { pendingSyncMessage = null; screen = TrainingScreen.PENDING_SESSIONS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
         TrainingScreen.REMINDERS -> ReminderScreen(reminderSettings, notificationPermissionGranted, onSettingsChanged = { settings ->
             ReminderStore(context).saveSettings(settings); reminderSettings = settings; ReminderScheduler.reschedule(context, plans)
         }, onRequestPermission = { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }, onOpenSettings = {

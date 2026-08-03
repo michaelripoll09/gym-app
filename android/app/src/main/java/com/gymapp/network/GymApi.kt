@@ -29,7 +29,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class IdResponse(val id: String)
 @Serializable data class WorkoutPlanExerciseResponse(val exerciseId: String, val name: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 @Serializable data class WorkoutPlanDayResponse(val name: String, val exercises: List<WorkoutPlanExerciseResponse>)
-@Serializable data class WorkoutPlanResponse(val id: String, val name: String, val days: List<WorkoutPlanDayResponse>)
+@Serializable data class WorkoutPlanResponse(val id: String, val name: String, val days: List<WorkoutPlanDayResponse>, val active: Boolean = false)
 @Serializable data class CuratedPlanResponse(val id: String, val name: String, val description: String, val primaryProfile: String, val experienceLevel: String, val goal: String, val days: List<WorkoutPlanDayResponse>)
 @Serializable data class GuidedRoutineProposalResponse(val name: String, val explanation: String, val source: String, val days: List<WorkoutPlanDayResponse>)
 @Serializable data class SetLogRequest(val exerciseId: String, val repetitions: Int, val loadKg: Double? = null)
@@ -63,6 +63,7 @@ interface GymApi {
     @GET("workout-plans/archived") suspend fun archivedWorkoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>
     @PUT("workout-plans/{planId}/archive") suspend fun archiveWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @PUT("workout-plans/{planId}/restore") suspend fun restoreWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
+    @PUT("workout-plans/{planId}/activate") suspend fun activateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): IdResponse
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
     @GET("training-summary/weekly") suspend fun weeklyTrainingSummary(@Header("Authorization") authorization: String): WeeklyTrainingSummaryResponse
