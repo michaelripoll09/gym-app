@@ -16,3 +16,6 @@ gym-app:
     resend-api-key: ${RESEND_API_KEY:}
     from: ${RESEND_FROM_EMAIL:onboarding@resend.dev}
     reset-url: ${GYM_RESET_URL:gymapp://reset-password}
+  ai:
+    provider: ${GYM_AI_PROVIDER:deterministic}
+    api-key: ${GYM_AI_API_KEY:}
