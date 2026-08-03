@@ -47,8 +47,8 @@ import com.gymapp.catalog.loadedCatalog
 import com.gymapp.curated.CuratedPlansScreen
 import com.gymapp.curated.CuratedPlansState
 import com.gymapp.guided.GuidedRoutineScreen
+import com.gymapp.guided.GuidedRoutineDraft
 import com.gymapp.guided.discardGuidedRoutine
-import com.gymapp.guided.toCreateWorkoutPlanRequest
 import com.gymapp.network.CreateWorkoutPlanRequest
 import com.gymapp.network.CreateWorkoutSessionRequest
 import com.gymapp.network.CuratedPlanResponse
@@ -335,7 +335,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var selectedCuratedPlan by remember { mutableStateOf<CuratedPlanResponse?>(null) }
     var adoptingCuratedPlan by remember { mutableStateOf(false) }
     var curatedPlanError by remember { mutableStateOf<String?>(null) }
-    var guidedProposal by remember { mutableStateOf<GuidedRoutineProposalResponse?>(null) }
+    var guidedDraft by remember { mutableStateOf<GuidedRoutineDraft?>(null) }
     var guidedLoading by remember { mutableStateOf(false) }
     var guidedError by remember { mutableStateOf<String?>(null) }
     var guidedSaving by remember { mutableStateOf(false) }
@@ -434,9 +434,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     }
     LaunchedEffect(screen, refreshGuidedProposal) {
         if (screen == TrainingScreen.GUIDED) {
-            guidedLoading = true; guidedError = null; guidedProposal = null
+            guidedLoading = true; guidedError = null; guidedDraft = null
             runCatching { GymApi.create().guidedRoutineProposal("Bearer $token") }
-                .onSuccess { guidedProposal = it }
+                .onSuccess { guidedDraft = GuidedRoutineDraft.from(it) }
                 .onFailure {
                     if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
                     else guidedError = "No pudimos generar una rutina compatible. Revisa tu perfil o intenta de nuevo."
@@ -447,13 +447,13 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
 
     when (screen) {
         TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowGuidedRoutine = { screen = TrainingScreen.GUIDED }, onShowCuratedPlans = { selectedCuratedPlan = null; curatedPlanError = null; screen = TrainingScreen.CURATED }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowSummary = { screen = TrainingScreen.SUMMARY }, onShowProfile = { screen = TrainingScreen.PROFILE })
-        TrainingScreen.GUIDED -> GuidedRoutineScreen(guidedLoading, guidedProposal, guidedError, guidedSaving, onGenerate = { refreshGuidedProposal++ }, onConfirm = { proposal -> scope.launch {
+        TrainingScreen.GUIDED -> GuidedRoutineScreen(guidedLoading, guidedDraft, catalog.exercises, guidedError, guidedSaving, onGenerate = { refreshGuidedProposal++ }, onDraftChanged = { guidedDraft = it }, onConfirm = { draft -> scope.launch {
             guidedSaving = true; guidedError = null
-            runCatching { GymApi.create().createWorkoutPlan("Bearer $token", proposal.toCreateWorkoutPlanRequest()) }
-                .onSuccess { guidedProposal = null; refreshPlans++; screen = TrainingScreen.ROUTINES }
-                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else guidedError = "No pudimos crear la rutina. IntÃ©ntalo de nuevo." }
+            runCatching { GymApi.create().createWorkoutPlan("Bearer $token", draft.toCreateWorkoutPlanRequest()) }
+                .onSuccess { guidedDraft = null; refreshPlans++; screen = TrainingScreen.ROUTINES }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else guidedError = "No pudimos crear la rutina. Inténtalo de nuevo." }
             guidedSaving = false
-        } }, onDiscard = { guidedProposal = discardGuidedRoutine(); screen = TrainingScreen.CATALOG }, onBack = { screen = TrainingScreen.CATALOG })
+        } }, onDiscard = { discardGuidedRoutine(); guidedDraft = null; screen = TrainingScreen.CATALOG }, onBack = { screen = TrainingScreen.CATALOG })
         TrainingScreen.CURATED -> CuratedPlansScreen(curatedPlans, selectedCuratedPlan, adoptingCuratedPlan, curatedPlanError, onSelect = { selectedCuratedPlan = it; curatedPlanError = null }, onAdopt = { plan -> scope.launch {
             adoptingCuratedPlan = true; curatedPlanError = null
             runCatching { GymApi.create().adoptCuratedPlan("Bearer $token", plan.id) }
