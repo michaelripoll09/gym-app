@@ -67,6 +67,7 @@ import com.gymapp.measurements.MeasurementsScreen
 import com.gymapp.measurements.removeMeasurement
 import com.gymapp.measurements.replaceMeasurement
 import com.gymapp.goals.GoalsScreen
+import com.gymapp.home.HomeDashboardScreen
 import com.gymapp.network.ProgressGoalResponse
 import com.gymapp.network.ChangePasswordRequest
 import com.gymapp.network.PasswordResetConfirmationRequest
@@ -283,13 +284,13 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { CATALOG, GUIDED, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, GOALS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
+private enum class TrainingScreen { HOME, CATALOG, GUIDED, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, MEASUREMENTS, GOALS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
     val context = LocalContext.current
     val tokenStore = remember { TokenStore(context) }
-    var screen by remember { mutableStateOf(TrainingScreen.CATALOG) }
+    var screen by remember { mutableStateOf(TrainingScreen.HOME) }
     var activeProfile by remember { mutableStateOf(profile) }
     var catalog by remember { mutableStateOf(ExerciseCatalogState()) }
     var draft by remember { mutableStateOf(RoutineDraftState()) }
@@ -365,7 +366,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         }
     }
     LaunchedEffect(screen, refreshPlans) {
-        if (screen == TrainingScreen.ROUTINES) {
+        if (screen == TrainingScreen.ROUTINES || screen == TrainingScreen.REMINDERS) {
             plansLoading = true; plansError = null; plansOffline = false
             runCatching { if (archivedPlans) GymApi.create().archivedWorkoutPlans("Bearer $token") else GymApi.create().workoutPlans("Bearer $token") }.onSuccess {
                 plans = it
@@ -379,11 +380,11 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         }
     }
     LaunchedEffect(screen, refreshToday) {
-        if (screen == TrainingScreen.TODAY) {
+        if (screen == TrainingScreen.HOME || screen == TrainingScreen.TODAY) {
             today = today.copy(loading = true, error = null)
             val day = spanishDayName(LocalDate.now().dayOfWeek)
             runCatching { GymApi.create().workoutPlans("Bearer $token") }
-                .onSuccess { offlineStore.cachePlans(it); today = TodayTrainingState(loading = false, plans = plansForToday(it, day), hasActivePlan = it.any { plan -> plan.active }) }
+                .onSuccess { plans = it; offlineStore.cachePlans(it); today = TodayTrainingState(loading = false, plans = plansForToday(it, day), hasActivePlan = it.any { plan -> plan.active }) }
                 .onFailure {
                     if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized()
                     else if (isOffline(context)) { val cached = offlineStore.cachedPlans(); today = TodayTrainingState(loading = false, plans = plansForToday(cached, day), hasActivePlan = cached.any { plan -> plan.active }) }
@@ -415,9 +416,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else measurements = BodyMeasurementsState(error = "No pudimos cargar tus medidas. Reintenta.") }
         }
     }
-    LaunchedEffect(screen, refreshGoals) { if (screen == TrainingScreen.GOALS) { goalsLoading=true; goalsError=null; runCatching { GymApi.create().progressGoals("Bearer $token") }.onSuccess { goals=it }.onFailure { if(requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else goalsError="No pudimos cargar tus objetivos." }; goalsLoading=false } }
+    LaunchedEffect(screen, refreshGoals) { if (screen == TrainingScreen.HOME || screen == TrainingScreen.GOALS) { goalsLoading=true; goalsError=null; runCatching { GymApi.create().progressGoals("Bearer $token") }.onSuccess { goals=it }.onFailure { if(requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else goalsError="No pudimos cargar tus objetivos." }; goalsLoading=false } }
     LaunchedEffect(screen, refreshWeeklySummary) {
-        if (screen == TrainingScreen.SUMMARY) {
+        if (screen == TrainingScreen.HOME || screen == TrainingScreen.SUMMARY) {
             weeklySummary = WeeklySummaryState(loading = true)
             runCatching { GymApi.create().weeklyTrainingSummary("Bearer $token") }
                 .onSuccess { weeklySummary = WeeklySummaryState(summary = it) }
@@ -447,6 +448,22 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     }
 
     when (screen) {
+        TrainingScreen.HOME -> HomeDashboardScreen(
+            today = today,
+            day = spanishDayName(LocalDate.now().dayOfWeek),
+            weeklySummary = weeklySummary,
+            goals = goals,
+            goalsLoading = goalsLoading,
+            goalsError = goalsError,
+            onStart = { plan -> session = SessionDraftState.from(plan, spanishDayName(LocalDate.now().dayOfWeek)); sessionError = null; sessionReturnScreen = TrainingScreen.HOME; screen = TrainingScreen.SESSION },
+            onShowRoutines = { screen = TrainingScreen.ROUTINES },
+            onShowCatalog = { screen = TrainingScreen.CATALOG },
+            onShowProgress = { screen = TrainingScreen.PROGRESS },
+            onShowReminders = { screen = TrainingScreen.REMINDERS },
+            onRetryToday = { refreshToday++ },
+            onRetrySummary = { refreshWeeklySummary++ },
+            onRetryGoals = { refreshGoals++ },
+        )
         TrainingScreen.CATALOG -> ExerciseCatalogScreen(catalog, onCreateRoutine = { screen = TrainingScreen.EDITOR }, onShowGuidedRoutine = { screen = TrainingScreen.GUIDED }, onShowCuratedPlans = { selectedCuratedPlan = null; curatedPlanError = null; screen = TrainingScreen.CURATED }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onShowToday = { screen = TrainingScreen.TODAY }, onShowSummary = { screen = TrainingScreen.SUMMARY }, onShowProfile = { screen = TrainingScreen.PROFILE })
         TrainingScreen.GUIDED -> GuidedRoutineScreen(guidedLoading, guidedDraft, catalog.exercises, guidedError, guidedSaving, onGenerate = { refreshGuidedProposal++ }, onDraftChanged = { guidedDraft = it }, onConfirm = { draft -> scope.launch {
             guidedSaving = true; guidedError = null
