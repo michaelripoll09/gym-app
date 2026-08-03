@@ -64,7 +64,7 @@ class AuthController(private val auth: AuthService) {
 
 @Component
 class BearerTokenFilter(private val jwt: JwtService) : OncePerRequestFilter() {
-    override fun shouldNotFilter(request: HttpServletRequest) = !request.requestURI.startsWith("/api/v1/me") && !request.requestURI.startsWith("/api/v1/workout-plans") && !request.requestURI.startsWith("/api/v1/workout-sessions") && !request.requestURI.startsWith("/api/v1/curated-plans") && !request.requestURI.startsWith("/api/v1/guided-routines") && !request.requestURI.startsWith("/api/v1/training-summary") && !request.requestURI.startsWith("/api/v1/training-progress") && !request.requestURI.startsWith("/api/v1/body-measurements") && !request.requestURI.startsWith("/api/v1/progress-goals")
+    override fun shouldNotFilter(request: HttpServletRequest) = !request.requestURI.startsWith("/api/v1/me") && !request.requestURI.startsWith("/api/v1/workout-plans") && !request.requestURI.startsWith("/api/v1/workout-sessions") && !request.requestURI.startsWith("/api/v1/curated-plans") && !request.requestURI.startsWith("/api/v1/guided-routines") && !request.requestURI.startsWith("/api/v1/training-summary") && !request.requestURI.startsWith("/api/v1/training-calendar") && !request.requestURI.startsWith("/api/v1/training-progress") && !request.requestURI.startsWith("/api/v1/body-measurements") && !request.requestURI.startsWith("/api/v1/progress-goals")
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
         val token = request.getHeader("Authorization")?.removePrefix("Bearer ")

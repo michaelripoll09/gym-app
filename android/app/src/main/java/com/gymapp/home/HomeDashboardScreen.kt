@@ -33,6 +33,7 @@ fun HomeDashboardScreen(
     onShowRoutines: () -> Unit,
     onShowCatalog: () -> Unit,
     onShowProgress: () -> Unit,
+    onShowCalendar: () -> Unit,
     onShowReminders: () -> Unit,
     onRetryToday: () -> Unit,
     onRetrySummary: () -> Unit,
@@ -103,6 +104,7 @@ fun HomeDashboardScreen(
                 Button(onClick = onShowRoutines) { Text("Mis rutinas") }
                 Button(onClick = onShowCatalog) { Text("Catálogo de ejercicios") }
                 Button(onClick = onShowProgress) { Text("Progreso") }
+                Button(onClick = onShowCalendar) { Text("Calendario de adherencia") }
                 Button(onClick = onShowReminders) { Text("Recordatorios") }
             }
         }
