@@ -35,6 +35,8 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class SetLogRequest(val exerciseId: String, val repetitions: Int, val loadKg: Double? = null)
 @Serializable data class CreateWorkoutSessionRequest(val sets: List<SetLogRequest>, val perceivedExertion: Int? = null, val note: String? = null)
 @Serializable data class UpdateWorkoutSessionRequest(val sets: List<SetLogRequest>, val perceivedExertion: Int? = null, val note: String? = null)
+@Serializable data class ProgressMilestoneResponse(val exerciseName: String, val type: String, val value: Double, val achievedAt: String)
+@Serializable data class CreateWorkoutSessionResponse(val id: String, val milestones: List<ProgressMilestoneResponse> = emptyList())
 @Serializable data class SessionSetResponse(val exerciseName: String, val repetitions: Int, val loadKg: Double? = null, val exerciseId: String = "")
 @Serializable data class WorkoutSessionResponse(val id: String, val planName: String, val startedAt: String, val sets: List<SessionSetResponse>, val perceivedExertion: Int? = null, val note: String? = null)
 @Serializable data class NextWeeklySessionResponse(val planName: String, val dayName: String)
@@ -67,7 +69,7 @@ interface GymApi {
     @PUT("workout-plans/{planId}/archive") suspend fun archiveWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @PUT("workout-plans/{planId}/restore") suspend fun restoreWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @PUT("workout-plans/{planId}/activate") suspend fun activateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
-    @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): IdResponse
+    @POST("workout-plans/{planId}/sessions") suspend fun createWorkoutSession(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutSessionRequest): CreateWorkoutSessionResponse
     @GET("workout-sessions") suspend fun workoutSessions(@Header("Authorization") authorization: String): List<WorkoutSessionResponse>
     @PUT("workout-sessions/{sessionId}") suspend fun updateWorkoutSession(@Header("Authorization") authorization: String, @Path("sessionId") sessionId: String, @Body request: UpdateWorkoutSessionRequest)
     @DELETE("workout-sessions/{sessionId}") suspend fun deleteWorkoutSession(@Header("Authorization") authorization: String, @Path("sessionId") sessionId: String)
