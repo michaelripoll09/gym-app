@@ -348,13 +348,62 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), invalid.statusCode())
     }
 
+    @Test
+    fun `updates an owners completed session with corrected sets and feedback`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sesion corregible", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val created = request("POST", "/api/v1/workout-plans/${body(plan).getValue("id")}/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8, "loadKg" to 20.0)), "perceivedExertion" to 5, "note" to "Inicial"))
+        val sessionId = body(created).getValue("id") as String
+
+        val updated = request("PUT", "/api/v1/workout-sessions/$sessionId", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 30.0)), "perceivedExertion" to 8, "note" to "Tecnica corregida"))
+        val listed = request("GET", "/api/v1/workout-sessions", owner, null)
+
+        assertEquals(HttpStatus.NO_CONTENT.value(), updated.statusCode())
+        val session = (json.readValue(listed.body(), List::class.java) as List<Map<String, Any>>).single()
+        val set = (session.getValue("sets") as List<Map<String, Any>>).single()
+        assertEquals(10, set.getValue("repetitions"))
+        assertEquals(30.0, set.getValue("loadKg"))
+        assertEquals(8, session.getValue("perceivedExertion"))
+        assertEquals("Tecnica corregida", session.getValue("note"))
+    }
+
+    @Test
+    fun `rejects invalid corrections and hides another owners session`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sesion privada", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val sessionId = body(request("POST", "/api/v1/workout-plans/${body(plan).getValue("id")}/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8))))).getValue("id") as String
+        val other = registerToken(); saveCalisthenicsProfile(other)
+
+        val invalid = request("PUT", "/api/v1/workout-sessions/$sessionId", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 0)), "perceivedExertion" to 11))
+        val foreign = request("DELETE", "/api/v1/workout-sessions/$sessionId", other, null)
+
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY.value(), invalid.statusCode())
+        assertEquals(HttpStatus.NOT_FOUND.value(), foreign.statusCode())
+        assertEquals(1, (json.readValue(request("GET", "/api/v1/workout-sessions", owner, null).body(), List::class.java) as List<*>).size)
+    }
+
+    @Test
+    fun `deletes an owners completed session`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sesion eliminable", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 8))))))
+        val sessionId = body(request("POST", "/api/v1/workout-plans/${body(plan).getValue("id")}/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8))))).getValue("id") as String
+
+        val deleted = request("DELETE", "/api/v1/workout-sessions/$sessionId", owner, null)
+
+        assertEquals(HttpStatus.NO_CONTENT.value(), deleted.statusCode())
+        assertEquals(emptyList<Any>(), json.readValue(request("GET", "/api/v1/workout-sessions", owner, null).body(), List::class.java))
+    }
+
     private fun registerToken(): String = (body(request("POST", "/api/v1/auth/register", null, mapOf("email" to "training-${UUID.randomUUID()}@example.com", "password" to "Passw0rd!", "acceptedTermsAt" to "2026-07-27T00:00:00Z"))).getValue("accessToken") as String)
     private fun seedExercise(id: String, sourceId: String, name: String, profile: String) {
         jdbc.update("insert into exercises (id, source_name, source_external_id, source_commit, name, spanish_instructions, published, source_file_sha256, attribution, review_status) values (?, 'test-fixture', ?, 'test', ?, 'Instrucción de prueba', true, '', null, 'APPROVED') on conflict (source_name, source_external_id) do nothing", UUID.fromString(id), sourceId, name)
         jdbc.update("insert into exercise_training_profiles (exercise_id, profile_code) values (?, ?) on conflict do nothing", UUID.fromString(id), profile)
     }
     private fun saveCalisthenicsProfile(token: String) { request("PUT", "/api/v1/me/training-profile", token, mapOf("experienceLevel" to "BEGINNER", "primaryProfile" to "CALISTHENICS", "secondaryProfiles" to emptyList<String>(), "goal" to "MUSCLE_GAIN", "availabilityBand" to "MEDIUM", "availableDaysPerWeek" to 3, "sessionDurationMinutes" to 60)) }
-    private fun request(method: String, path: String, token: String?, payload: Any?): HttpResponse<String> { val builder = HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).header("Content-Type", "application/json"); if (token != null) builder.header("Authorization", "Bearer $token"); val request = when (method) { "GET" -> builder.GET().build(); "PUT" -> builder.PUT(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload))).build(); else -> builder.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload))).build() }; return client.send(request, HttpResponse.BodyHandlers.ofString()) }
+    private fun request(method: String, path: String, token: String?, payload: Any?): HttpResponse<String> { val builder = HttpRequest.newBuilder(URI.create("http://localhost:$port$path")).header("Content-Type", "application/json"); if (token != null) builder.header("Authorization", "Bearer $token"); val request = when (method) { "GET" -> builder.GET().build(); "PUT" -> builder.PUT(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload))).build(); "DELETE" -> builder.DELETE().build(); else -> builder.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(payload))).build() }; return client.send(request, HttpResponse.BodyHandlers.ofString()) }
     @Suppress("UNCHECKED_CAST") private fun body(response: HttpResponse<String>) = json.readValue(response.body(), Map::class.java) as Map<String, Any>
     private companion object { val client: HttpClient = HttpClient.newHttpClient() }
 }

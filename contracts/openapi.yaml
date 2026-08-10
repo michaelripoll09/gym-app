@@ -151,6 +151,39 @@ paths:
         '401': {description: Token requerido.}
         '403': {description: El plan pertenece a otro usuario.}
         '422': {description: Series inválidas.}
+  /workout-sessions/{sessionId}:
+    put:
+      operationId: updateWorkoutSession
+      summary: Corrige una sesion completada propia sin alterar su rutina.
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateWorkoutSessionRequest'}
+      responses:
+        '204': {description: Sesion corregida.}
+        '401': {description: Token requerido.}
+        '404': {description: Sesion inexistente o no accesible.}
+        '422': {description: Correccion invalida.}
+    delete:
+      operationId: deleteWorkoutSession
+      summary: Elimina una sesion completada propia.
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '204': {description: Sesion eliminada.}
+        '401': {description: Token requerido.}
+        '404': {description: Sesion inexistente o no accesible.}
 components:
   securitySchemes:
     bearerAuth:
@@ -262,8 +295,18 @@ components:
       properties:
         exerciseId: {type: string, format: uuid}
         repetitions: {type: integer, minimum: 1}
+        loadKg: {type: number, minimum: 0, nullable: true}
     CreateWorkoutSessionRequest:
       type: object
       required: [sets]
       properties:
         sets: {type: array, minItems: 1, items: {$ref: '#/components/schemas/SetLogRequest'}}
+        perceivedExertion: {type: integer, minimum: 1, maximum: 10, nullable: true}
+        note: {type: string, maxLength: 500, nullable: true}
+    UpdateWorkoutSessionRequest:
+      type: object
+      required: [sets]
+      properties:
+        sets: {type: array, minItems: 1, items: {$ref: '#/components/schemas/SetLogRequest'}}
+        perceivedExertion: {type: integer, minimum: 1, maximum: 10, nullable: true}
+        note: {type: string, maxLength: 500, nullable: true}

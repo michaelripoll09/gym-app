@@ -54,6 +54,7 @@ import com.gymapp.guided.GuidedRoutineDraft
 import com.gymapp.guided.discardGuidedRoutine
 import com.gymapp.network.CreateWorkoutPlanRequest
 import com.gymapp.network.CreateWorkoutSessionRequest
+import com.gymapp.network.UpdateWorkoutSessionRequest
 import com.gymapp.network.CuratedPlanResponse
 import com.gymapp.network.GuidedRoutineProposalResponse
 import com.gymapp.network.GymApi
@@ -96,9 +97,12 @@ import com.gymapp.routines.RoutineDraftState
 import com.gymapp.routines.RoutineEditorScreen
 import com.gymapp.routines.RoutineListScreen
 import com.gymapp.sessions.SessionDraftState
+import com.gymapp.sessions.SessionCorrectionDraftState
 import com.gymapp.sessions.SessionHistoryScreen
 import com.gymapp.sessions.SessionHistoryState
 import com.gymapp.sessions.SessionScreen
+import com.gymapp.sessions.SessionMutationRefreshState
+import com.gymapp.sessions.refreshAfterSessionMutation
 import com.gymapp.today.TodayTrainingScreen
 import com.gymapp.today.TodayTrainingState
 import com.gymapp.today.plansForToday
@@ -322,6 +326,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var pendingSyncMessage by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(SessionHistoryState()) }
     var refreshHistory by remember { mutableIntStateOf(0) }
+    var sessionCorrection by remember { mutableStateOf<SessionCorrectionDraftState?>(null) }
+    var sessionCorrectionSaving by remember { mutableStateOf(false) }
+    var sessionCorrectionError by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
     var calendarMonth by remember { mutableStateOf(YearMonth.now()) }
@@ -359,6 +366,13 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var notificationPermissionGranted by remember { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notificationPermissionGranted = it }
     val scope = rememberCoroutineScope()
+    fun refreshSessionDependentScreens() {
+        val refreshed = refreshAfterSessionMutation(SessionMutationRefreshState(refreshHistory, refreshProgress, refreshCalendar, refreshWeeklySummary))
+        refreshHistory = refreshed.history
+        refreshProgress = refreshed.progress
+        refreshCalendar = refreshed.calendar
+        refreshWeeklySummary = refreshed.weeklySummary
+    }
 
     LaunchedEffect(openToday) { if (reminderDestination(openToday) == ReminderDestination.TODAY) { screen = TrainingScreen.TODAY; onTodayOpened() } }
 
@@ -603,9 +617,50 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             if (successful > 0) { refreshHistory++; refreshProgress++; refreshToday++; refreshWeeklySummary++ }
             pendingSyncing = false
         } }, onBack = { screen = TrainingScreen.ROUTINES })
-        TrainingScreen.HISTORY -> SessionHistoryScreen(history, pendingSessions, onSelect = { history = history.select(it) }, onRetry = { refreshHistory++ }, onBack = {
-            if (history.selected != null) history = history.copy(selected = null) else screen = TrainingScreen.ROUTINES
-        })
+        TrainingScreen.HISTORY -> SessionHistoryScreen(
+            state = history,
+            pending = pendingSessions,
+            correction = sessionCorrection,
+            savingCorrection = sessionCorrectionSaving,
+            correctionError = sessionCorrectionError,
+            onSelect = { history = history.select(it); sessionCorrection = null; sessionCorrectionError = null },
+            onEdit = { selected -> sessionCorrection = SessionCorrectionDraftState.from(selected); sessionCorrectionError = null },
+            onRepetitionsChanged = { index, value -> sessionCorrection = sessionCorrection?.updateRepetitions(index, value) },
+            onLoadChanged = { index, value -> sessionCorrection = sessionCorrection?.updateLoadKg(index, value) },
+            onEffortChanged = { value -> sessionCorrection = sessionCorrection?.updatePerceivedExertion(value) },
+            onNoteChanged = { value -> sessionCorrection = sessionCorrection?.updateNote(value) },
+            onSaveCorrection = {
+                val correction = sessionCorrection
+                if (correction != null && correction.validationMessage() == null) scope.launch {
+                    sessionCorrectionSaving = true; sessionCorrectionError = null
+                    val request = UpdateWorkoutSessionRequest(
+                        sets = correction.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) },
+                        perceivedExertion = correction.perceivedExertion.toIntOrNull(),
+                        note = correction.note.trim().takeIf { it.isNotEmpty() },
+                    )
+                    runCatching { GymApi.create().updateWorkoutSession("Bearer $token", correction.sessionId, request) }
+                        .onSuccess { sessionCorrection = null; history = history.copy(selected = null); refreshSessionDependentScreens() }
+                        .onFailure { error -> if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized() else sessionCorrectionError = "No pudimos guardar la correccion. Reintenta." }
+                    sessionCorrectionSaving = false
+                }
+            },
+            onCancelCorrection = { if (!sessionCorrectionSaving) { sessionCorrection = null; sessionCorrectionError = null } },
+            onDelete = { selected -> scope.launch {
+                sessionCorrectionSaving = true; sessionCorrectionError = null
+                runCatching { GymApi.create().deleteWorkoutSession("Bearer $token", selected.id) }
+                    .onSuccess { sessionCorrection = null; history = history.copy(selected = null); refreshSessionDependentScreens() }
+                    .onFailure { error -> if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized() else sessionCorrectionError = "No pudimos eliminar la sesion. Reintenta." }
+                sessionCorrectionSaving = false
+            } },
+            onRetry = { refreshHistory++ },
+            onBack = {
+                when {
+                    sessionCorrection != null -> { sessionCorrection = null; sessionCorrectionError = null }
+                    history.selected != null -> history = history.copy(selected = null)
+                    else -> screen = TrainingScreen.ROUTINES
+                }
+            },
+        )
         TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onGoals = { screen = TrainingScreen.GOALS }, onCalendar = { calendarBackScreen = TrainingScreen.PROGRESS; screen = TrainingScreen.CALENDAR }, onBack = { screen = TrainingScreen.ROUTINES })
         TrainingScreen.CALENDAR -> TrainingCalendarScreen(month = calendarMonth, state = calendar, onMonth = { calendarMonth = it }, onRetry = { refreshCalendar++ }, onBack = { screen = calendarBackScreen })
         TrainingScreen.GOALS -> GoalsScreen(goals, goalsLoading, goalsError, onSave = { request, id -> scope.launch { if(id==null) runCatching { GymApi.create().createProgressGoal("Bearer $token",request) }.onSuccess { goals=listOf(it)+goals }.onFailure { goalsError="No pudimos guardar el objetivo." } else runCatching { GymApi.create().updateProgressGoal("Bearer $token",id,request) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos actualizar el objetivo." } } }, onComplete = { goal -> scope.launch { runCatching { GymApi.create().completeProgressGoal("Bearer $token",goal.id) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos completar el objetivo." } } }, onDelete = { goal -> scope.launch { runCatching { GymApi.create().deleteProgressGoal("Bearer $token",goal.id) }.onSuccess { goals=goals.filterNot { it.id==goal.id } }.onFailure { goalsError="No pudimos eliminar el objetivo." } } }, onRetry = { refreshGoals++ }, onBack = { screen=TrainingScreen.PROGRESS })

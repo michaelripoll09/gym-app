@@ -6,12 +6,13 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 class PlanAccessDeniedException : RuntimeException()
+class SessionNotFoundException : RuntimeException()
 
 @Service
 class TrainingService(private val jdbc: JdbcTemplate) {
     fun listSessions(userId: UUID): List<WorkoutSessionResponse> = jdbc.query("select s.id, s.started_at, p.name, s.perceived_exertion, s.note from workout_sessions s join workout_plans p on p.id=s.plan_id where s.user_id=? order by s.started_at desc", { rows, _ ->
         val sessionId = rows.getObject("id", UUID::class.java)
-        WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble()) }, sessionId), (rows.getObject("perceived_exertion") as? Number)?.toInt(), rows.getString("note"))
+        WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select l.exercise_id, e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble(), setRows.getObject("exercise_id", UUID::class.java)) }, sessionId), (rows.getObject("perceived_exertion") as? Number)?.toInt(), rows.getString("note"))
     }, userId)
 
     fun listPlans(userId: UUID, archived: Boolean = false): List<WorkoutPlanResponse> = jdbc.query("select p.id, p.name, exists (select 1 from active_workout_plans a where a.user_id=p.user_id and a.plan_id=p.id) as active from workout_plans p where p.user_id = ? and p.archived=? order by p.created_at desc", { planRows, _ ->
@@ -75,9 +76,26 @@ class TrainingService(private val jdbc: JdbcTemplate) {
     }
     @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): UUID {
         if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
-        require(request.sets.isNotEmpty() && request.sets.all { it.repetitions > 0 && (it.loadKg == null || it.loadKg >= 0) })
-        require(request.perceivedExertion == null || request.perceivedExertion in 1..10)
-        val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id, perceived_exertion, note) values (?, ?, ?, ?, ?)", sessionId, planId, userId, request.perceivedExertion, request.note?.trim()?.takeIf { it.isNotEmpty() })
+        validateSession(request.sets, request.perceivedExertion, request.note)
+        val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id, perceived_exertion, note) values (?, ?, ?, ?, ?)", sessionId, planId, userId, request.perceivedExertion, normalizedNote(request.note))
         request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions, load_kg) values (?, ?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions, set.loadKg) }; return sessionId
     }
+    @Transactional fun updateSession(userId: UUID, sessionId: UUID, request: UpdateWorkoutSessionRequest) {
+        validateSession(request.sets, request.perceivedExertion, request.note)
+        if (jdbc.queryForObject("select count(*) from workout_sessions where id=? and user_id=?", Int::class.java, sessionId, userId) != 1) throw SessionNotFoundException()
+        val existingExercises = jdbc.query("select exercise_id from workout_set_logs where session_id=? order by exercise_id", { rows, _ -> rows.getObject("exercise_id", UUID::class.java) }, sessionId)
+        require(existingExercises == request.sets.map { it.exerciseId }.sorted())
+        jdbc.update("update workout_sessions set perceived_exertion=?, note=? where id=?", request.perceivedExertion, normalizedNote(request.note), sessionId)
+        jdbc.update("delete from workout_set_logs where session_id=?", sessionId)
+        request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions, load_kg) values (?, ?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions, set.loadKg) }
+    }
+    @Transactional fun deleteSession(userId: UUID, sessionId: UUID) {
+        if (jdbc.update("delete from workout_sessions where id=? and user_id=?", sessionId, userId) != 1) throw SessionNotFoundException()
+    }
+    private fun validateSession(sets: List<SetLogRequest>, perceivedExertion: Int?, note: String?) {
+        require(sets.isNotEmpty() && sets.all { it.repetitions > 0 && (it.loadKg == null || it.loadKg >= 0) })
+        require(perceivedExertion == null || perceivedExertion in 1..10)
+        require(note == null || note.trim().length <= 500)
+    }
+    private fun normalizedNote(note: String?) = note?.trim()?.takeIf { it.isNotEmpty() }
 }
