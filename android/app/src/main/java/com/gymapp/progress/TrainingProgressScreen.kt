@@ -21,7 +21,7 @@ private val progressLime = Color(0xFFB9F227)
 private val progressCard = Color(0xFF1C2022)
 
 @Composable
-fun TrainingProgressScreen(state: TrainingProgressState, personalRecords: PersonalRecordsState, pendingCount: Int, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onMeasurements: () -> Unit, onGoals: () -> Unit, onCalendar: () -> Unit, onBack: () -> Unit) {
+fun TrainingProgressScreen(state: TrainingProgressState, personalRecords: PersonalRecordsState, analysis: ProgressAnalysisState, pendingCount: Int, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onMeasurements: () -> Unit, onGoals: () -> Unit, onCalendar: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Progreso", color = progressLime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver a mis rutinas") } }
@@ -31,6 +31,36 @@ fun TrainingProgressScreen(state: TrainingProgressState, personalRecords: Person
         item { Button(onClick = onGoals) { Text("Ver mis objetivos") } }
         item { Button(onClick = onCalendar) { Text("Ver calendario de adherencia") } }
         if (pendingCount > 0) item { Text("$pendingCount sesión(es) pendiente(s) no se incluyen hasta sincronizarlas.", color = Color(0xFFFFD180)) }
+        item { Text("Análisis de progreso", color = Color.White, fontSize = 20.sp) }
+        when (analysis.content()) {
+            ProgressAnalysisContent.LOADING -> item { Text("Preparando tu análisis…", color = Color.LightGray) }
+            ProgressAnalysisContent.ERROR -> {
+                item { Text(analysis.error ?: "No pudimos cargar tu análisis", color = Color(0xFFFF8A80)) }
+                item { Button(onClick = onRetry) { Text("Reintentar") } }
+            }
+            ProgressAnalysisContent.EMPTY -> item {
+                Card(colors = CardDefaults.cardColors(containerColor = progressCard), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(analysis.emptyMessage(), color = Color.LightGray)
+                        analysis.analysis?.sources?.forEach { Text(it, color = Color.LightGray) }
+                    }
+                }
+            }
+            ProgressAnalysisContent.READY -> analysis.analysis?.let { report -> item {
+                Card(colors = CardDefaults.cardColors(containerColor = progressCard), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Últimos ${report.periodDays} días", color = progressLime, fontSize = 18.sp)
+                        Text("${report.completedSessions} sesiones completadas", color = Color.White)
+                        report.adherencePercent?.let { Text("Adherencia: $it%", color = Color.LightGray) }
+                        report.weightChangeKg?.let { Text("Cambio de peso: ${formatWeightChange(it)}", color = Color.LightGray) }
+                        if (report.activeGoals > 0) Text("Objetivos con valor actual: ${report.goalsWithCurrentValue}/${report.activeGoals}", color = Color.LightGray)
+                        if (report.recentPersonalRecords > 0) Text("Récords vigentes logrados: ${report.recentPersonalRecords}", color = Color.LightGray)
+                        Text("Fuentes", color = Color.White)
+                        report.sources.forEach { Text("• $it", color = Color.LightGray) }
+                    }
+                }
+            } }
+        }
         item { Text("Records personales", color = Color.White, fontSize = 20.sp) }
         when (personalRecords.content()) {
             PersonalRecordsContent.LOADING -> item { Text("Calculando tus records…", color = Color.LightGray) }

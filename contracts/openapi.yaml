@@ -198,6 +198,14 @@ paths:
                 type: array
                 items: {$ref: '#/components/schemas/PersonalRecordResponse'}
         '401': {description: Token requerido.}
+  /training-progress/analysis:
+    get:
+      operationId: getProgressAnalysis
+      summary: Resume el progreso privado reciente con fuentes verificables.
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Análisis de progreso, content: {application/json: {schema: {$ref: '#/components/schemas/ProgressAnalysisResponse'}}}}
+        '401': {description: Token requerido.}
 components:
   securitySchemes:
     bearerAuth:
@@ -347,3 +355,17 @@ components:
         maximumLoadAt: {type: string, format: date-time, nullable: true}
         maximumRepetitions: {type: integer, minimum: 1}
         maximumRepetitionsAt: {type: string, format: date-time}
+    ProgressAnalysisResponse:
+      type: object
+      required: [periodDays, completedSessions, scheduledSessions, activeGoals, goalsWithCurrentValue, recentPersonalRecords, sufficientData, sources]
+      properties:
+        periodDays: {type: integer, minimum: 1}
+        completedSessions: {type: integer, minimum: 0}
+        scheduledSessions: {type: integer, minimum: 0}
+        adherencePercent: {type: integer, minimum: 0, maximum: 100, nullable: true}
+        weightChangeKg: {type: number, nullable: true}
+        activeGoals: {type: integer, minimum: 0}
+        goalsWithCurrentValue: {type: integer, minimum: 0}
+        recentPersonalRecords: {type: integer, minimum: 0}
+        sufficientData: {type: boolean}
+        sources: {type: array, items: {type: string}}

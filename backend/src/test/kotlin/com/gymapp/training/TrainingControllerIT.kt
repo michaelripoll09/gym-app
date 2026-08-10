@@ -238,6 +238,46 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
     }
 
     @Test
+    fun `private progress analysis combines recent training measurements goals and records`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Analisis", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        val planId = body(plan).getValue("id") as String
+        request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 12, "loadKg" to 45.0))))
+        request("POST", "/api/v1/body-measurements", owner, mapOf("recordedOn" to "2026-08-01", "weightKg" to 80.0))
+        request("POST", "/api/v1/body-measurements", owner, mapOf("recordedOn" to "2026-08-10", "weightKg" to 79.0))
+        request("POST", "/api/v1/progress-goals", owner, mapOf("type" to "EXERCISE_LOAD", "targetValue" to 60.0, "exerciseName" to "Flexión de prueba"))
+
+        val response = request("GET", "/api/v1/training-progress/analysis", owner, null)
+        val analysis = body(response)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        assertEquals(1, analysis.getValue("completedSessions"))
+        assertEquals(-1.0, analysis.getValue("weightChangeKg"))
+        assertEquals(1, analysis.getValue("activeGoals"))
+        assertEquals(1, analysis.getValue("recentPersonalRecords"))
+        assertEquals(true, analysis.getValue("sufficientData"))
+        assertTrue((analysis.getValue("sources") as List<*>).any { it.toString().contains("sesiones") })
+    }
+
+    @Test
+    fun `private progress analysis reports insufficient data without exposing another account`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", other, mapOf("name" to "Ajeno", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        request("POST", "/api/v1/workout-plans/${body(plan).getValue("id")}/sessions", other, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 99, "loadKg" to 200.0))))
+
+        val response = request("GET", "/api/v1/training-progress/analysis", owner, null)
+        val analysis = body(response)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        assertEquals(0, analysis.getValue("completedSessions"))
+        assertEquals(0, analysis.getValue("recentPersonalRecords"))
+        assertEquals(false, analysis.getValue("sufficientData"))
+    }
+
+    @Test
     fun `archives and restores an owners plan without deleting its sessions`() {
         val owner = registerToken(); saveCalisthenicsProfile(owner)
         val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)

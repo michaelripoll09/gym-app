@@ -89,6 +89,7 @@ import com.gymapp.profile.resolveProfileRecovery
 import com.gymapp.progress.TrainingProgressScreen
 import com.gymapp.progress.TrainingProgressState
 import com.gymapp.progress.PersonalRecordsState
+import com.gymapp.progress.ProgressAnalysisState
 import com.gymapp.offline.OfflineTrainingStore
 import com.gymapp.offline.PendingSession
 import com.gymapp.offline.PendingSessionsScreen
@@ -334,6 +335,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var sessionCorrectionError by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(TrainingProgressState()) }
     var personalRecords by remember { mutableStateOf(PersonalRecordsState()) }
+    var progressAnalysis by remember { mutableStateOf(ProgressAnalysisState()) }
     var refreshProgress by remember { mutableIntStateOf(0) }
     var calendarMonth by remember { mutableStateOf(YearMonth.now()) }
     var calendar by remember { mutableStateOf(TrainingCalendarState()) }
@@ -431,12 +433,16 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         if (screen == TrainingScreen.PROGRESS) {
             progress = TrainingProgressState(loading = true)
             personalRecords = PersonalRecordsState(loading = true)
+            progressAnalysis = ProgressAnalysisState(loading = true)
             runCatching { GymApi.create().workoutSessions("Bearer $token") }
                 .onSuccess { progress = TrainingProgressState.loaded(it, Instant.now()) }
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progress = TrainingProgressState(error = "No pudimos cargar tu progreso") } }
             runCatching { GymApi.create().personalRecords("Bearer $token") }
                 .onSuccess { personalRecords = PersonalRecordsState(records = it) }
                 .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { personalRecords = PersonalRecordsState(error = "No pudimos cargar tus records") } }
+            runCatching { GymApi.create().progressAnalysis("Bearer $token") }
+                .onSuccess { progressAnalysis = ProgressAnalysisState(analysis = it) }
+                .onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else { progressAnalysis = ProgressAnalysisState(error = "No pudimos cargar tu análisis") } }
         }
     }
     LaunchedEffect(screen, calendarMonth, refreshCalendar) {
@@ -670,9 +676,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 }
             },
         )
-        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, personalRecords, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onGoals = { screen = TrainingScreen.GOALS }, onCalendar = { calendarBackScreen = TrainingScreen.PROGRESS; screen = TrainingScreen.CALENDAR }, onBack = { screen = TrainingScreen.ROUTINES })
+        TrainingScreen.PROGRESS -> TrainingProgressScreen(progress, personalRecords, progressAnalysis, pendingSessions.size, onRetry = { refreshProgress++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgression = { screen = TrainingScreen.PROGRESSION }, onMeasurements = { editingMeasurement = null; measurementMessage = null; screen = TrainingScreen.MEASUREMENTS }, onGoals = { screen = TrainingScreen.GOALS }, onCalendar = { calendarBackScreen = TrainingScreen.PROGRESS; screen = TrainingScreen.CALENDAR }, onBack = { screen = TrainingScreen.ROUTINES })
         TrainingScreen.CALENDAR -> TrainingCalendarScreen(month = calendarMonth, state = calendar, onMonth = { calendarMonth = it }, onRetry = { refreshCalendar++ }, onBack = { screen = calendarBackScreen })
-        TrainingScreen.GOALS -> GoalsScreen(goals, goalsLoading, goalsError, onSave = { request, id -> scope.launch { if(id==null) runCatching { GymApi.create().createProgressGoal("Bearer $token",request) }.onSuccess { goals=listOf(it)+goals }.onFailure { goalsError="No pudimos guardar el objetivo." } else runCatching { GymApi.create().updateProgressGoal("Bearer $token",id,request) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos actualizar el objetivo." } } }, onComplete = { goal -> scope.launch { runCatching { GymApi.create().completeProgressGoal("Bearer $token",goal.id) }.onSuccess { refreshGoals++ }.onFailure { goalsError="No pudimos completar el objetivo." } } }, onDelete = { goal -> scope.launch { runCatching { GymApi.create().deleteProgressGoal("Bearer $token",goal.id) }.onSuccess { goals=goals.filterNot { it.id==goal.id } }.onFailure { goalsError="No pudimos eliminar el objetivo." } } }, onRetry = { refreshGoals++ }, onBack = { screen=TrainingScreen.PROGRESS })
+        TrainingScreen.GOALS -> GoalsScreen(goals, goalsLoading, goalsError, onSave = { request, id -> scope.launch { if(id==null) runCatching { GymApi.create().createProgressGoal("Bearer $token",request) }.onSuccess { goals=listOf(it)+goals; refreshProgress++ }.onFailure { goalsError="No pudimos guardar el objetivo." } else runCatching { GymApi.create().updateProgressGoal("Bearer $token",id,request) }.onSuccess { refreshGoals++; refreshProgress++ }.onFailure { goalsError="No pudimos actualizar el objetivo." } } }, onComplete = { goal -> scope.launch { runCatching { GymApi.create().completeProgressGoal("Bearer $token",goal.id) }.onSuccess { refreshGoals++; refreshProgress++ }.onFailure { goalsError="No pudimos completar el objetivo." } } }, onDelete = { goal -> scope.launch { runCatching { GymApi.create().deleteProgressGoal("Bearer $token",goal.id) }.onSuccess { goals=goals.filterNot { it.id==goal.id }; refreshProgress++ }.onFailure { goalsError="No pudimos eliminar el objetivo." } } }, onRetry = { refreshGoals++ }, onBack = { screen=TrainingScreen.PROGRESS })
         TrainingScreen.MEASUREMENTS -> MeasurementsScreen(
             state = measurements,
             saving = measurementSaving,
@@ -686,6 +692,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 result.onSuccess { saved ->
                     measurements = if (editing == null) BodyMeasurementsState(measurements = (measurements.measurements + saved).sortedByDescending { it.recordedOn }) else BodyMeasurementsState(measurements = replaceMeasurement(measurements.measurements, saved))
                     editingMeasurement = null
+                    refreshProgress++
                 }.onFailure { error ->
                     if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized()
                     else measurementMessage = if ((error as? HttpException)?.code() == 422) "Revisa la fecha, los rangos y que no exista otra medida ese día." else "No pudimos guardar la medida. Reintenta."
@@ -696,7 +703,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             onDelete = { measurement -> scope.launch {
                 measurementSaving = true; measurementMessage = null
                 runCatching { GymApi.create().deleteBodyMeasurement("Bearer $token", measurement.id) }
-                    .onSuccess { measurements = BodyMeasurementsState(measurements = removeMeasurement(measurements.measurements, measurement.id)); if (editingMeasurement?.id == measurement.id) editingMeasurement = null }
+                    .onSuccess { measurements = BodyMeasurementsState(measurements = removeMeasurement(measurements.measurements, measurement.id)); if (editingMeasurement?.id == measurement.id) editingMeasurement = null; refreshProgress++ }
                     .onFailure { error -> if (requiresSessionReset((error as? HttpException)?.code())) onUnauthorized() else measurementMessage = "No pudimos eliminar la medida. Reintenta." }
                 measurementSaving = false
             } },
