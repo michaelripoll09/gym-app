@@ -651,7 +651,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 }
                 sessionSaving = false
             }
-        }, onBack = { sessionMilestones = null; sessionReferences = emptyList(); sessionReferencesError = null; screen = sessionReturnScreen }, milestones = sessionMilestones, onMilestonesShown = { sessionMilestones = null; screen = sessionReturnScreen }, references = sessionReferences, referencesLoading = sessionReferencesLoading, referencesError = sessionReferencesError, onRetryReferences = { loadSessionReferences(currentSession.planId) }) }
+        }, onBack = { sessionMilestones = null; sessionReferences = emptyList(); sessionReferencesError = null; screen = sessionReturnScreen }, milestones = sessionMilestones, onMilestonesShown = { sessionMilestones = null; screen = sessionReturnScreen }, references = sessionReferences, referencesLoading = sessionReferencesLoading, referencesError = sessionReferencesError, onRetryReferences = { loadSessionReferences(currentSession.planId) }, onApplyReference = { exerciseId, reference -> session = session?.applyReference(exerciseId, reference) }) }
         TrainingScreen.PENDING_SESSIONS -> PendingSessionsScreen(pendingSessions, pendingSyncing, pendingSyncMessage, onSync = { scope.launch {
             pendingSyncing = true; var successful = 0; var failed = 0
             for (pending in pendingSessions.toList()) {
