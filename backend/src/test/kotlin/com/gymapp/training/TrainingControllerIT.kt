@@ -278,6 +278,40 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
     }
 
     @Test
+    fun `routine review suggests an active owners compatible exercise from its progress`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Rutina activa", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        val planId = body(plan).getValue("id") as String
+        request("PUT", "/api/v1/workout-plans/$planId/activate", owner, null)
+        val first = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8, "loadKg" to 20.0))))
+        val latest = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 20.0))))
+        jdbc.update("update workout_sessions set started_at=? where id=?", OffsetDateTime.parse("2026-08-01T10:00:00Z"), UUID.fromString(body(first).getValue("id") as String))
+        jdbc.update("update workout_sessions set started_at=? where id=?", OffsetDateTime.parse("2026-08-02T10:00:00Z"), UUID.fromString(body(latest).getValue("id") as String))
+
+        val response = request("GET", "/api/v1/training-progress/routine-review", owner, null)
+        val review = body(response)
+        val suggestion = (review.getValue("suggestions") as List<Map<String, Any>>).single()
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        assertEquals("READY", review.getValue("state"))
+        assertEquals("Flexión de prueba", suggestion.getValue("exerciseName"))
+        assertEquals("CONSIDER_PROGRESSING", suggestion.getValue("action"), suggestion.toString())
+        assertTrue((suggestion.getValue("sources") as List<*>).isNotEmpty())
+    }
+
+    @Test
+    fun `routine review reports no active plan without exposing another account`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val response = request("GET", "/api/v1/training-progress/routine-review", owner, null)
+        val review = body(response)
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        assertEquals("NO_ACTIVE_PLAN", review.getValue("state"))
+        assertEquals(emptyList<Any>(), review.getValue("suggestions"))
+    }
+
+    @Test
     fun `archives and restores an owners plan without deleting its sessions`() {
         val owner = registerToken(); saveCalisthenicsProfile(owner)
         val exerciseId = jdbc.queryForObject("select e.id from exercises e join exercise_training_profiles p on p.exercise_id=e.id where p.profile_code='CALISTHENICS' limit 1", UUID::class.java)

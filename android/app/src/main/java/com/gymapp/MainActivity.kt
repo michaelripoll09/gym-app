@@ -115,6 +115,8 @@ import com.gymapp.summary.WeeklySummaryScreen
 import com.gymapp.summary.WeeklySummaryState
 import com.gymapp.progression.ProgressionScreen
 import com.gymapp.progression.ProgressionState
+import com.gymapp.progression.RoutineReviewScreen
+import com.gymapp.progression.RoutineReviewState
 import com.gymapp.reminders.ReminderScheduler
 import com.gymapp.reminders.ReminderScreen
 import com.gymapp.reminders.ReminderSettings
@@ -296,7 +298,7 @@ private fun Onboarding(token: String, onSaved: (String) -> Unit, onUnauthorized:
     }
 }
 
-private enum class TrainingScreen { HOME, CATALOG, GUIDED, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, CALENDAR, MEASUREMENTS, GOALS, PROGRESSION, SUMMARY, REMINDERS, PENDING_SESSIONS }
+private enum class TrainingScreen { HOME, CATALOG, GUIDED, CURATED, PROFILE, EDITOR, ROUTINES, TODAY, SESSION, HISTORY, PROGRESS, CALENDAR, MEASUREMENTS, GOALS, PROGRESSION, REVIEW, SUMMARY, REMINDERS, PENDING_SESSIONS }
 
 @Composable
 private fun TrainingHome(token: String, profile: String, openToday: Boolean, onTodayOpened: () -> Unit, onUnauthorized: () -> Unit) {
@@ -352,6 +354,8 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var refreshGoals by remember { mutableIntStateOf(0) }
     var progression by remember { mutableStateOf(ProgressionState()) }
     var refreshProgression by remember { mutableIntStateOf(0) }
+    var routineReview by remember { mutableStateOf(RoutineReviewState()) }
+    var refreshRoutineReview by remember { mutableIntStateOf(0) }
     var weeklySummary by remember { mutableStateOf(WeeklySummaryState()) }
     var refreshWeeklySummary by remember { mutableIntStateOf(0) }
     var curatedPlans by remember { mutableStateOf(CuratedPlansState()) }
@@ -480,6 +484,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
         }
     }
     LaunchedEffect(screen, refreshProgression) { if (screen == TrainingScreen.PROGRESSION) { progression = ProgressionState(loading = true); runCatching { GymApi.create().progressionRecommendations("Bearer $token") }.onSuccess { progression = ProgressionState(items = it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else progression = ProgressionState(error = "No pudimos cargar tu progresión") } } }
+    LaunchedEffect(screen, refreshRoutineReview, refreshPlans, refreshProgress) { if (screen == TrainingScreen.REVIEW) { routineReview = RoutineReviewState(loading = true); runCatching { GymApi.create().routineReview("Bearer $token") }.onSuccess { routineReview = RoutineReviewState(review = it) }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else routineReview = RoutineReviewState(error = "No pudimos cargar la revisión") } } }
     LaunchedEffect(screen, refreshCuratedPlans) {
         if (screen == TrainingScreen.CURATED) {
             curatedPlans = CuratedPlansState(loading = true)
@@ -711,7 +716,8 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             onRetry = { refreshMeasurements++ },
             onBack = { editingMeasurement = null; screen = TrainingScreen.PROGRESS },
         )
-        TrainingScreen.PROGRESSION -> ProgressionScreen(progression, onRetry = { refreshProgression++ }, onBack = { screen = TrainingScreen.PROGRESS })
+        TrainingScreen.PROGRESSION -> ProgressionScreen(progression, onRetry = { refreshProgression++ }, onReview = { screen = TrainingScreen.REVIEW }, onBack = { screen = TrainingScreen.PROGRESS })
+        TrainingScreen.REVIEW -> RoutineReviewScreen(routineReview, onRetry = { refreshRoutineReview++ }, onEdit = { id -> plans.firstOrNull { it.id == id }?.let { draft = RoutineDraftState.from(it); editingPlanId = it.id; screen = TrainingScreen.EDITOR } }, onBack = { screen = TrainingScreen.PROGRESS })
         TrainingScreen.SUMMARY -> WeeklySummaryScreen(weeklySummary, onRetry = { refreshWeeklySummary++ }, onBack = { screen = TrainingScreen.CATALOG })
     }
 }

@@ -206,6 +206,13 @@ paths:
       responses:
         '200': {description: Análisis de progreso, content: {application/json: {schema: {$ref: '#/components/schemas/ProgressAnalysisResponse'}}}}
         '401': {description: Token requerido.}
+  /training-progress/routine-review:
+    get:
+      operationId: getRoutineReview
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Revisión privada de rutina, content: {application/json: {schema: {$ref: '#/components/schemas/RoutineReviewResponse'}}}}
+        '401': {description: Token requerido.}
 components:
   securitySchemes:
     bearerAuth:
@@ -369,3 +376,20 @@ components:
         recentPersonalRecords: {type: integer, minimum: 0}
         sufficientData: {type: boolean}
         sources: {type: array, items: {type: string}}
+    RoutineReviewSuggestionResponse:
+      type: object
+      required: [dayName, exerciseName, action, explanation, sources]
+      properties:
+        dayName: {type: string}
+        exerciseName: {type: string}
+        action: {type: string, enum: [CONSIDER_PROGRESSING, REVIEW_VOLUME, MAINTAIN]}
+        explanation: {type: string}
+        sources: {type: array, items: {type: string}}
+    RoutineReviewResponse:
+      type: object
+      required: [state, suggestions]
+      properties:
+        state: {type: string, enum: [NO_ACTIVE_PLAN, INSUFFICIENT_DATA, READY]}
+        activePlanId: {type: string, format: uuid, nullable: true}
+        activePlanName: {type: string, nullable: true}
+        suggestions: {type: array, items: {$ref: '#/components/schemas/RoutineReviewSuggestionResponse'}}
