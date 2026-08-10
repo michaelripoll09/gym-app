@@ -151,6 +151,26 @@ paths:
         '401': {description: Token requerido.}
         '403': {description: El plan pertenece a otro usuario.}
         '422': {description: Series inválidas.}
+  /workout-plans/{planId}/session-references:
+    get:
+      operationId: getWorkoutPlanSessionReferences
+      summary: Obtiene las últimas referencias privadas por ejercicio de una rutina.
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Referencias de la cuenta para ejercicios de la rutina, o lista vacía sin historial.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ExerciseSessionReferenceResponse'}
+        '401': {description: Token requerido.}
+        '403': {description: El plan pertenece a otro usuario.}
   /workout-sessions/{sessionId}:
     put:
       operationId: updateWorkoutSession
@@ -346,6 +366,14 @@ components:
       properties:
         id: {type: string, format: uuid}
         milestones: {type: array, items: {$ref: '#/components/schemas/ProgressMilestoneResponse'}}
+    ExerciseSessionReferenceResponse:
+      type: object
+      required: [exerciseId, repetitions, recordedAt]
+      properties:
+        exerciseId: {type: string, format: uuid}
+        repetitions: {type: integer, minimum: 1}
+        loadKg: {type: number, minimum: 0, nullable: true}
+        recordedAt: {type: string, format: date-time}
     UpdateWorkoutSessionRequest:
       type: object
       required: [sets]

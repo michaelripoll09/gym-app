@@ -37,6 +37,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class UpdateWorkoutSessionRequest(val sets: List<SetLogRequest>, val perceivedExertion: Int? = null, val note: String? = null)
 @Serializable data class ProgressMilestoneResponse(val exerciseName: String, val type: String, val value: Double, val achievedAt: String)
 @Serializable data class CreateWorkoutSessionResponse(val id: String, val milestones: List<ProgressMilestoneResponse> = emptyList())
+@Serializable data class ExerciseSessionReferenceResponse(val exerciseId: String, val repetitions: Int, val loadKg: Double? = null, val recordedAt: String)
 @Serializable data class SessionSetResponse(val exerciseName: String, val repetitions: Int, val loadKg: Double? = null, val exerciseId: String = "")
 @Serializable data class WorkoutSessionResponse(val id: String, val planName: String, val startedAt: String, val sets: List<SessionSetResponse>, val perceivedExertion: Int? = null, val note: String? = null)
 @Serializable data class NextWeeklySessionResponse(val planName: String, val dayName: String)
@@ -69,6 +70,7 @@ interface GymApi {
     @PUT("workout-plans/{planId}") suspend fun updateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String, @Body request: CreateWorkoutPlanRequest)
     @GET("workout-plans") suspend fun workoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>
     @GET("workout-plans/archived") suspend fun archivedWorkoutPlans(@Header("Authorization") authorization: String): List<WorkoutPlanResponse>
+    @GET("workout-plans/{planId}/session-references") suspend fun sessionReferences(@Header("Authorization") authorization: String, @Path("planId") planId: String): List<ExerciseSessionReferenceResponse>
     @PUT("workout-plans/{planId}/archive") suspend fun archiveWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @PUT("workout-plans/{planId}/restore") suspend fun restoreWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)
     @PUT("workout-plans/{planId}/activate") suspend fun activateWorkoutPlan(@Header("Authorization") authorization: String, @Path("planId") planId: String)

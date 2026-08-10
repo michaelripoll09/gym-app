@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gymapp.network.ProgressMilestoneResponse
+import com.gymapp.network.ExerciseSessionReferenceResponse
 import kotlinx.coroutines.delay
 
 @Composable
@@ -38,6 +39,10 @@ fun SessionScreen(
     onBack: () -> Unit,
     milestones: List<ProgressMilestoneResponse>? = null,
     onMilestonesShown: () -> Unit = {},
+    references: List<ExerciseSessionReferenceResponse> = emptyList(),
+    referencesLoading: Boolean = false,
+    referencesError: String? = null,
+    onRetryReferences: () -> Unit = {},
 ) {
     if (milestones != null) {
         LaunchedEffect(milestones) { delay(2500); onMilestonesShown() }
@@ -71,6 +76,14 @@ fun SessionScreen(
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Entrenar · ${state.planName}", color = Color(0xFFB9F227), fontSize = 28.sp) }
         item { Button(onClick = onBack, enabled = !saving) { Text("Cancelar") } }
+        referencesError?.let { message -> item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF3A2424))) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(message, color = Color(0xFFFFB4AB))
+                    Button(onClick = onRetryReferences, enabled = !referencesLoading) { Text("Reintentar referencias") }
+                }
+            }
+        } }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF273028))) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -86,6 +99,10 @@ fun SessionScreen(
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1C2022))) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${set.exerciseName} · Serie ${set.setNumber}", color = Color.White)
+                    references.firstOrNull { it.exerciseId == set.exerciseId }?.let { Text("Último registro: ${it.repetitions} reps${it.loadKg?.let { load -> " · $load kg" }.orEmpty()}", color = Color.LightGray) } ?: Text("Aún no hay referencias para este ejercicio.", color = Color.LightGray)
+                    sessionReferenceFor(set.exerciseId, references)?.let { reference ->
+                        Text("Registro del ${reference.recordedAt.substringBefore('T')}", color = Color.LightGray)
+                    }
                     OutlinedTextField(set.repetitions, { onRepetitionsChanged(index, it) }, label = { Text("Repeticiones realizadas") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
                     OutlinedTextField(set.loadKg, { onLoadChanged(index, it) }, label = { Text("Carga (kg, opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
                     Button(onClick = { if (set.restSeconds > 0) { timerExercise = set.exerciseName; timerConfigured = set.restSeconds; timerRemaining = set.restSeconds; timerStatus = RestTimerStatus.RUNNING.name } }, enabled = !saving && set.restSeconds > 0) { Text("Completar serie · descansar ${set.restSeconds}s") }

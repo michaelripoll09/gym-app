@@ -2,6 +2,7 @@ package com.gymapp.sessions
 
 import com.gymapp.network.WorkoutPlanResponse
 import com.gymapp.network.ProgressMilestoneResponse
+import com.gymapp.network.ExerciseSessionReferenceResponse
 import com.gymapp.network.WorkoutSessionResponse
 
 fun canFinishSession(saving: Boolean) = !saving
@@ -17,6 +18,12 @@ private fun formatMilestoneValue(value: Double) = if (value % 1.0 == 0.0) value.
 
 fun sessionFeedbackError(value: String): String? =
     if (value.isBlank() || value.toIntOrNull() in 1..10) null else "Selecciona un esfuerzo entre 1 y 10"
+
+fun sessionReferenceFor(exerciseId: String, references: List<ExerciseSessionReferenceResponse>) =
+    references.firstOrNull { it.exerciseId == exerciseId }
+
+fun sessionReferencesLoadError() =
+    "No pudimos cargar tus referencias. Puedes reintentar sin interrumpir la sesión."
 
 data class SessionSetDraft(val exerciseId: String, val exerciseName: String, val setNumber: Int, val restSeconds: Int = 0, val repetitions: String = "", val loadKg: String = "")
 

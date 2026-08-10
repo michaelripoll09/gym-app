@@ -544,6 +544,62 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(emptyList<Any>(), json.readValue(request("GET", "/api/v1/workout-sessions", owner, null).body(), List::class.java))
     }
 
+    @Test
+    fun `returns only the latest private reference for a plans exercise`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Referencias propias", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        val planId = body(plan).getValue("id") as String
+        val previous = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8, "loadKg" to 20.0))))
+        val latest = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 25.0))))
+        jdbc.update("update workout_sessions set started_at=? where id=?", OffsetDateTime.parse("2026-08-01T10:00:00Z"), UUID.fromString(body(previous).getValue("id") as String))
+        jdbc.update("update workout_sessions set started_at=? where id=?", OffsetDateTime.parse("2026-08-02T10:00:00Z"), UUID.fromString(body(latest).getValue("id") as String))
+
+        val response = request("GET", "/api/v1/workout-plans/$planId/session-references", owner, null)
+
+        assertEquals(HttpStatus.OK.value(), response.statusCode())
+        val reference = (json.readValue(response.body(), List::class.java) as List<Map<String, Any>>).single()
+        assertEquals(exerciseId.toString(), reference.getValue("exerciseId"))
+        assertEquals(10, reference.getValue("repetitions"))
+        assertEquals(25.0, reference.getValue("loadKg"))
+        assertEquals("2026-08-02T10:00Z", reference.getValue("recordedAt"))
+    }
+
+    @Test
+    fun `returns no references without history and forbids another users plan`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Sin historial", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        val planId = body(plan).getValue("id") as String
+
+        val empty = request("GET", "/api/v1/workout-plans/$planId/session-references", owner, null)
+        val foreign = request("GET", "/api/v1/workout-plans/$planId/session-references", other, null)
+
+        assertEquals(HttpStatus.OK.value(), empty.statusCode())
+        assertEquals(emptyList<Any>(), json.readValue(empty.body(), List::class.java))
+        assertEquals(HttpStatus.FORBIDDEN.value(), foreign.statusCode())
+    }
+
+    @Test
+    fun `refreshes references after correcting and deleting a session`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Referencias actualizables", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        val planId = body(plan).getValue("id") as String
+        val session = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 8, "loadKg" to 20.0))))
+        val sessionId = body(session).getValue("id") as String
+
+        request("PUT", "/api/v1/workout-sessions/$sessionId", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 25.0))))
+        val corrected = json.readValue(request("GET", "/api/v1/workout-plans/$planId/session-references", owner, null).body(), List::class.java) as List<Map<String, Any>>
+        request("DELETE", "/api/v1/workout-sessions/$sessionId", owner, null)
+        val deleted = json.readValue(request("GET", "/api/v1/workout-plans/$planId/session-references", owner, null).body(), List::class.java)
+
+        assertEquals(10, corrected.single().getValue("repetitions"))
+        assertEquals(25.0, corrected.single().getValue("loadKg"))
+        assertEquals(emptyList<Any>(), deleted)
+    }
+
     private fun registerToken(): String = (body(request("POST", "/api/v1/auth/register", null, mapOf("email" to "training-${UUID.randomUUID()}@example.com", "password" to "Passw0rd!", "acceptedTermsAt" to "2026-07-27T00:00:00Z"))).getValue("accessToken") as String)
     private fun seedExercise(id: String, sourceId: String, name: String, profile: String) {
         jdbc.update("insert into exercises (id, source_name, source_external_id, source_commit, name, spanish_instructions, published, source_file_sha256, attribution, review_status) values (?, 'test-fixture', ?, 'test', ?, 'Instrucción de prueba', true, '', null, 'APPROVED') on conflict (source_name, source_external_id) do nothing", UUID.fromString(id), sourceId, name)
