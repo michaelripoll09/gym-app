@@ -36,6 +36,19 @@ data class SessionDraftState(
 ) {
     fun updateRepetitions(index: Int, value: String) = copy(sets = sets.mapIndexed { current, item -> if (current == index) item.copy(repetitions = value) else item })
     fun updateLoadKg(index: Int, value: String) = copy(sets = sets.mapIndexed { current, item -> if (current == index) item.copy(loadKg = value) else item })
+    fun applyReference(exerciseId: String, reference: ExerciseSessionReferenceResponse?): SessionDraftState {
+        if (reference == null) return this
+        return copy(sets = sets.map { set ->
+            if (set.exerciseId != exerciseId || set.repetitions.isNotBlank() || set.loadKg.isNotBlank()) set else set.copy(
+                repetitions = set.repetitions.ifBlank { reference.repetitions.toString() },
+                loadKg = set.loadKg.ifBlank { reference.loadKg?.toString().orEmpty() },
+            )
+        })
+    }
+    fun canApplyReference(exerciseId: String, reference: ExerciseSessionReferenceResponse?) =
+        reference != null && sets.any { set ->
+            set.exerciseId == exerciseId && set.repetitions.isBlank() && set.loadKg.isBlank()
+        }
     fun updatePerceivedExertion(value: String) = copy(perceivedExertion = value)
     fun updateNote(value: String) = copy(note = value)
     fun validationMessage(): String? = when {

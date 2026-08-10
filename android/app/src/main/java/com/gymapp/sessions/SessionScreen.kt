@@ -43,6 +43,7 @@ fun SessionScreen(
     referencesLoading: Boolean = false,
     referencesError: String? = null,
     onRetryReferences: () -> Unit = {},
+    onApplyReference: (String, ExerciseSessionReferenceResponse) -> Unit = { _, _ -> },
 ) {
     if (milestones != null) {
         LaunchedEffect(milestones) { delay(2500); onMilestonesShown() }
@@ -102,6 +103,11 @@ fun SessionScreen(
                     references.firstOrNull { it.exerciseId == set.exerciseId }?.let { Text("Último registro: ${it.repetitions} reps${it.loadKg?.let { load -> " · $load kg" }.orEmpty()}", color = Color.LightGray) } ?: Text("Aún no hay referencias para este ejercicio.", color = Color.LightGray)
                     sessionReferenceFor(set.exerciseId, references)?.let { reference ->
                         Text("Registro del ${reference.recordedAt.substringBefore('T')}", color = Color.LightGray)
+                        if (state.sets.indexOfFirst { it.exerciseId == set.exerciseId } == index && state.canApplyReference(set.exerciseId, reference)) {
+                            Button(onClick = { onApplyReference(set.exerciseId, reference) }, enabled = !saving) {
+                                Text("Aplicar referencia a series vacías")
+                            }
+                        }
                     }
                     OutlinedTextField(set.repetitions, { onRepetitionsChanged(index, it) }, label = { Text("Repeticiones realizadas") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
                     OutlinedTextField(set.loadKg, { onLoadChanged(index, it) }, label = { Text("Carga (kg, opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
