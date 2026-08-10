@@ -13,6 +13,8 @@ import java.util.UUID
 data class ExerciseProgressionResponse(val exerciseName: String, val previousRepetitions: Int, val latestRepetitions: Int, val previousLoadKg: Double, val latestLoadKg: Double, val action: String, val explanation: String)
 data class PersonalRecordResponse(val exerciseName: String, val maximumLoadKg: Double?, val maximumLoadAt: String?, val maximumRepetitions: Int, val maximumRepetitionsAt: String)
 data class ProgressAnalysisResponse(val periodDays: Int, val completedSessions: Int, val scheduledSessions: Int, val adherencePercent: Int?, val weightChangeKg: Double?, val activeGoals: Int, val goalsWithCurrentValue: Int, val recentPersonalRecords: Int, val sufficientData: Boolean, val sources: List<String>)
+data class RoutineReviewSuggestionResponse(val dayName: String, val exerciseName: String, val action: String, val explanation: String, val sources: List<String>)
+data class RoutineReviewResponse(val state: String, val activePlanId: UUID? = null, val activePlanName: String? = null, val suggestions: List<RoutineReviewSuggestionResponse> = emptyList())
 
 @RestController
 @RequestMapping("/api/v1/training-progress")
@@ -20,12 +22,14 @@ class ProgressionController(private val service: ProgressionService) {
     @GetMapping("/recommendations") fun recommendations(@RequestAttribute("authenticatedUserId") userId: UUID) = service.recommendations(userId)
     @GetMapping("/personal-records") fun personalRecords(@RequestAttribute("authenticatedUserId") userId: UUID) = service.personalRecords(userId)
     @GetMapping("/analysis") fun analysis(@RequestAttribute("authenticatedUserId") userId: UUID) = service.analysis(userId)
+    @GetMapping("/routine-review") fun routineReview(@RequestAttribute("authenticatedUserId") userId: UUID) = service.routineReview(userId)
 }
 
 @Service
 class ProgressionService(private val jdbc: JdbcTemplate) {
     private data class Record(val name: String, val reps: Int, val load: Double)
     private data class PersonalRecordRow(val name: String, val startedAt: OffsetDateTime, val repetitions: Int, val loadKg: Double?)
+    private data class RoutineReviewRow(val dayName: String, val exerciseName: String, val startedAt: OffsetDateTime, val repetitions: Int, val loadKg: Double)
     fun recommendations(userId: UUID): List<ExerciseProgressionResponse> = jdbc.query(
         "select e.name, s.started_at, sum(l.repetitions) reps, coalesce(avg(l.load_kg), 0) load from workout_set_logs l join workout_sessions s on s.id=l.session_id join workout_plans p on p.id=s.plan_id join exercises e on e.id=l.exercise_id where s.user_id=? and p.archived=false group by e.name, s.started_at order by e.name, s.started_at", { r, _ -> Record(r.getString("name"), r.getInt("reps"), r.getDouble("load")) }, userId
     ).groupBy { it.name }.mapNotNull { (_, rows) ->
@@ -67,5 +71,29 @@ class ProgressionService(private val jdbc: JdbcTemplate) {
             if (recentPersonalRecords > 0) add("$recentPersonalRecords récords personales vigentes logrados en el período")
         }
         return ProgressAnalysisResponse(periodDays, completedSessions, scheduledSessions, if (scheduledSessions == 0) null else (completedSessions * 100 / scheduledSessions).coerceAtMost(100), weightChange, activeGoals, goalsWithCurrentValue, recentPersonalRecords, completedSessions > 0 || measurements.size >= 2 || activeGoals > 0, sources)
+    }
+
+    fun routineReview(userId: UUID): RoutineReviewResponse {
+        val plan = jdbc.query("select p.id, p.name from active_workout_plans a join workout_plans p on p.id=a.plan_id where a.user_id=? and p.archived=false", { row, _ -> row.getObject("id", UUID::class.java) to row.getString("name") }, userId).firstOrNull()
+            ?: return RoutineReviewResponse(state = "NO_ACTIVE_PLAN")
+        val rows = jdbc.query("select d.name day_name, e.name exercise_name, s.started_at, s.id session_id, sum(l.repetitions) repetitions, coalesce(avg(l.load_kg), 0) load_kg from workout_plan_exercises pe join workout_plan_days d on d.id=pe.day_id join exercises e on e.id=pe.exercise_id join workout_set_logs l on l.exercise_id=pe.exercise_id join workout_sessions s on s.id=l.session_id where s.user_id=? and s.plan_id=? and d.plan_id=? group by d.name, e.name, s.started_at, s.id order by e.name, s.started_at, s.id", { row, _ -> RoutineReviewRow(row.getString("day_name"), row.getString("exercise_name"), row.getObject("started_at", OffsetDateTime::class.java), row.getInt("repetitions"), row.getDouble("load_kg")) }, userId, plan.first, plan.first)
+        val suggestions = rows.groupBy { it.exerciseName }.mapNotNull { (_, unsortedHistory) ->
+            val history = unsortedHistory.sortedBy { it.startedAt }
+            if (history.size < 2) null else {
+                val previous = history[history.lastIndex - 1]; val latest = history.last()
+                val action = when {
+                    latest.repetitions >= previous.repetitions && latest.loadKg == previous.loadKg -> "CONSIDER_PROGRESSING"
+                    latest.repetitions < previous.repetitions && latest.loadKg == previous.loadKg -> "REVIEW_VOLUME"
+                    else -> "MAINTAIN"
+                }
+                val explanation = when (action) {
+                    "CONSIDER_PROGRESSING" -> "Igualaste o superaste las repeticiones con la misma carga; revisa si deseas progresar manualmente."
+                    "REVIEW_VOLUME" -> "Hiciste menos repeticiones con la misma carga; revisa volumen, descanso o técnica antes de cambiar la rutina."
+                    else -> "El cambio de carga o repeticiones requiere mantener y observar una nueva sesión antes de ajustar."
+                }
+                RoutineReviewSuggestionResponse(latest.dayName, latest.exerciseName, action, explanation, listOf("Anterior: ${previous.repetitions} repeticiones · ${previous.loadKg} kg", "Último: ${latest.repetitions} repeticiones · ${latest.loadKg} kg"))
+            }
+        }.sortedBy { it.exerciseName }
+        return RoutineReviewResponse(if (suggestions.isEmpty()) "INSUFFICIENT_DATA" else "READY", plan.first, plan.second, suggestions)
     }
 }
