@@ -21,7 +21,7 @@ private val progressLime = Color(0xFFB9F227)
 private val progressCard = Color(0xFF1C2022)
 
 @Composable
-fun TrainingProgressScreen(state: TrainingProgressState, pendingCount: Int, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onMeasurements: () -> Unit, onGoals: () -> Unit, onCalendar: () -> Unit, onBack: () -> Unit) {
+fun TrainingProgressScreen(state: TrainingProgressState, personalRecords: PersonalRecordsState, pendingCount: Int, onRetry: () -> Unit, onHistory: () -> Unit, onProgression: () -> Unit, onMeasurements: () -> Unit, onGoals: () -> Unit, onCalendar: () -> Unit, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Progreso", color = progressLime, fontSize = 30.sp) }
         item { Button(onClick = onBack) { Text("Volver a mis rutinas") } }
@@ -31,6 +31,24 @@ fun TrainingProgressScreen(state: TrainingProgressState, pendingCount: Int, onRe
         item { Button(onClick = onGoals) { Text("Ver mis objetivos") } }
         item { Button(onClick = onCalendar) { Text("Ver calendario de adherencia") } }
         if (pendingCount > 0) item { Text("$pendingCount sesión(es) pendiente(s) no se incluyen hasta sincronizarlas.", color = Color(0xFFFFD180)) }
+        item { Text("Records personales", color = Color.White, fontSize = 20.sp) }
+        when (personalRecords.content()) {
+            PersonalRecordsContent.LOADING -> item { Text("Calculando tus records…", color = Color.LightGray) }
+            PersonalRecordsContent.ERROR -> {
+                item { Text(personalRecords.error ?: "No pudimos cargar tus records", color = Color(0xFFFF8A80)) }
+                item { Button(onClick = onRetry) { Text("Reintentar") } }
+            }
+            PersonalRecordsContent.EMPTY -> item { Text("Completa una sesion para establecer tus primeros records.", color = Color.LightGray) }
+            PersonalRecordsContent.READY -> items(personalRecords.records, key = { it.exerciseName }) { record ->
+                Card(colors = CardDefaults.cardColors(containerColor = progressCard), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(record.exerciseName, color = Color.White, fontSize = 18.sp)
+                        record.maximumLoadKg?.let { Text("Carga maxima: $it kg · ${record.maximumLoadAt}", color = Color.LightGray) } ?: Text("Sin carga registrada", color = Color.LightGray)
+                        Text("Maximo de repeticiones: ${record.maximumRepetitions} · ${record.maximumRepetitionsAt}", color = progressLime)
+                    }
+                }
+            }
+        }
         when (state.content()) {
             ProgressContent.LOADING -> item { Text("Calculando tu progreso…", color = Color.LightGray) }
             ProgressContent.ERROR -> {
