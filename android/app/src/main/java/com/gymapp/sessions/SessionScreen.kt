@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gymapp.network.ProgressMilestoneResponse
 import kotlinx.coroutines.delay
 
 @Composable
@@ -34,8 +35,34 @@ fun SessionScreen(
     onPerceivedExertionChanged: (String) -> Unit,
     onNoteChanged: (String) -> Unit,
     onFinish: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    milestones: List<ProgressMilestoneResponse>? = null,
+    onMilestonesShown: () -> Unit = {},
 ) {
+    if (milestones != null) {
+        LaunchedEffect(milestones) { delay(2500); onMilestonesShown() }
+        LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF273028))) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(milestoneSummaryTitle(milestones), color = Color(0xFFB9F227), fontSize = 26.sp)
+                        Text("Guardaste una mejora verificable en tu historial.", color = Color.White)
+                        milestones.forEach { milestone ->
+                            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1C2022))) {
+                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(milestone.exerciseName, color = Color.White, fontSize = 18.sp)
+                                    Text(milestoneValueLabel(milestone), color = Color(0xFFB9F227))
+                                }
+                            }
+                        }
+                        Text("Continuaremos automáticamente.", color = Color.LightGray)
+                        Button(onClick = onMilestonesShown, modifier = Modifier.fillMaxWidth()) { Text("Continuar ahora") }
+                    }
+                }
+            }
+        }
+        return
+    }
     var timerExercise by rememberSaveable { mutableStateOf("") }
     var timerConfigured by rememberSaveable { mutableStateOf(0) }
     var timerRemaining by rememberSaveable { mutableStateOf(0) }

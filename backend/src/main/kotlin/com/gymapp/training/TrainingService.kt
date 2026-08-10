@@ -3,6 +3,8 @@ package com.gymapp.training
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 
 class PlanAccessDeniedException : RuntimeException()
@@ -74,11 +76,13 @@ class TrainingService(private val jdbc: JdbcTemplate) {
             }
         }
     }
-    @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): UUID {
+    @Transactional fun createSession(userId: UUID, planId: UUID, request: CreateWorkoutSessionRequest): CreateWorkoutSessionResponse {
         if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
         validateSession(request.sets, request.perceivedExertion, request.note)
+        val milestones = milestonesFor(userId, request.sets)
         val sessionId=UUID.randomUUID(); jdbc.update("insert into workout_sessions (id, plan_id, user_id, perceived_exertion, note) values (?, ?, ?, ?, ?)", sessionId, planId, userId, request.perceivedExertion, normalizedNote(request.note))
-        request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions, load_kg) values (?, ?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions, set.loadKg) }; return sessionId
+        request.sets.forEach { set -> jdbc.update("insert into workout_set_logs (id, session_id, exercise_id, repetitions, load_kg) values (?, ?, ?, ?, ?)", UUID.randomUUID(), sessionId, set.exerciseId, set.repetitions, set.loadKg) }
+        return CreateWorkoutSessionResponse(sessionId, milestones)
     }
     @Transactional fun updateSession(userId: UUID, sessionId: UUID, request: UpdateWorkoutSessionRequest) {
         validateSession(request.sets, request.perceivedExertion, request.note)
@@ -96,6 +100,21 @@ class TrainingService(private val jdbc: JdbcTemplate) {
         require(sets.isNotEmpty() && sets.all { it.repetitions > 0 && (it.loadKg == null || it.loadKg >= 0) })
         require(perceivedExertion == null || perceivedExertion in 1..10)
         require(note == null || note.trim().length <= 500)
+    }
+    private fun milestonesFor(userId: UUID, sets: List<SetLogRequest>): List<ProgressMilestoneResponse> {
+        val achievedAt = OffsetDateTime.now(ZoneOffset.UTC).toString()
+        return sets.groupBy { it.exerciseId }.flatMap { (exerciseId, exerciseSets) ->
+            val exerciseName = jdbc.queryForObject("select name from exercises where id=?", String::class.java, exerciseId) ?: throw IllegalArgumentException()
+            val previous = jdbc.queryForMap("select max(l.repetitions) as repetitions, max(l.load_kg) as load_kg from workout_set_logs l join workout_sessions s on s.id=l.session_id where s.user_id=? and l.exercise_id=?", userId, exerciseId)
+            val previousRepetitions = (previous["repetitions"] as? Number)?.toInt()
+            val previousLoad = (previous["load_kg"] as? Number)?.toDouble()
+            val currentRepetitions = exerciseSets.maxOf { it.repetitions }
+            val currentLoad = exerciseSets.mapNotNull { it.loadKg }.maxOrNull()
+            buildList {
+                if (previousRepetitions == null || currentRepetitions > previousRepetitions) add(ProgressMilestoneResponse(exerciseName, "REPETITIONS", currentRepetitions.toDouble(), achievedAt))
+                if (currentLoad != null && (previousLoad == null || currentLoad > previousLoad)) add(ProgressMilestoneResponse(exerciseName, "LOAD", currentLoad, achievedAt))
+            }
+        }
     }
     private fun normalizedNote(note: String?) = note?.trim()?.takeIf { it.isNotEmpty() }
 }

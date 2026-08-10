@@ -1,6 +1,7 @@
 package com.gymapp.training
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -210,6 +211,30 @@ class TrainingControllerIT(@Autowired private val json: ObjectMapper, @Autowired
         assertEquals(10, corrected.getValue("maximumRepetitions"))
         assertEquals(40.0, deleted.getValue("maximumLoadKg"))
         assertEquals(10, deleted.getValue("maximumRepetitions"))
+    }
+
+    @Test
+    fun `session creation reports only strict personal record milestones for its owner`() {
+        val owner = registerToken(); saveCalisthenicsProfile(owner)
+        val exerciseId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val plan = request("POST", "/api/v1/workout-plans", owner, mapOf("name" to "Hitos", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        val planId = body(plan).getValue("id") as String
+
+        val first = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 40.0))))
+        val tied = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 10, "loadKg" to 40.0))))
+        val improved = request("POST", "/api/v1/workout-plans/$planId/sessions", owner, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 12, "loadKg" to 45.0))))
+        val other = registerToken(); saveCalisthenicsProfile(other)
+        val otherPlan = request("POST", "/api/v1/workout-plans", other, mapOf("name" to "Ajeno", "days" to listOf(mapOf("name" to "Lunes", "exercises" to listOf(mapOf("exerciseId" to exerciseId.toString(), "sets" to 1, "minRepetitions" to 8, "maxRepetitions" to 12))))))
+        request("POST", "/api/v1/workout-plans/${body(otherPlan).getValue("id")}/sessions", other, mapOf("sets" to listOf(mapOf("exerciseId" to exerciseId.toString(), "repetitions" to 99, "loadKg" to 200.0))))
+
+        val firstMilestones = body(first).getValue("milestones") as List<Map<String, Any>>
+        val tiedMilestones = body(tied).getValue("milestones") as List<Map<String, Any>>
+        val improvedMilestones = body(improved).getValue("milestones") as List<Map<String, Any>>
+        assertEquals(setOf("LOAD", "REPETITIONS"), firstMilestones.map { it.getValue("type") }.toSet())
+        assertEquals(emptyList<Any>(), tiedMilestones)
+        assertEquals(setOf("LOAD", "REPETITIONS"), improvedMilestones.map { it.getValue("type") }.toSet())
+        assertEquals(setOf(45.0, 12.0), improvedMilestones.map { (it.getValue("value") as Number).toDouble() }.toSet())
+        assertTrue(improvedMilestones.all { it.getValue("exerciseName").toString().isNotBlank() && it.getValue("achievedAt").toString().isNotBlank() })
     }
 
     @Test

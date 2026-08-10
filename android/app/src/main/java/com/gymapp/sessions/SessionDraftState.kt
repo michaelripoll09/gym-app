@@ -1,9 +1,19 @@
 package com.gymapp.sessions
 
 import com.gymapp.network.WorkoutPlanResponse
+import com.gymapp.network.ProgressMilestoneResponse
 import com.gymapp.network.WorkoutSessionResponse
 
 fun canFinishSession(saving: Boolean) = !saving
+
+fun milestoneSummaryTitle(milestones: List<ProgressMilestoneResponse>) = if (milestones.size == 1) "Nuevo récord personal" else "Nuevos récords personales"
+
+fun milestoneValueLabel(milestone: ProgressMilestoneResponse) = when (milestone.type) {
+    "LOAD" -> "Carga máxima: ${formatMilestoneValue(milestone.value)} kg"
+    else -> "Máximo de repeticiones: ${formatMilestoneValue(milestone.value)}"
+}
+
+private fun formatMilestoneValue(value: Double) = if (value % 1.0 == 0.0) value.toInt().toString() else value.toString()
 
 fun sessionFeedbackError(value: String): String? =
     if (value.isBlank() || value.toIntOrNull() in 1..10) null else "Selecciona un esfuerzo entre 1 y 10"
