@@ -35,4 +35,21 @@ class SessionHistoryStateTest {
         assertEquals("Fuerza base", selected.selected?.planName)
         assertEquals(8, selected.selected?.sets?.single()?.repetitions)
     }
+
+    @Test
+    fun `builds a correction draft that validates the corrected session values`() {
+        val draft = SessionCorrectionDraftState.from(
+            session.copy(
+                perceivedExertion = 6,
+                note = "Registrar mejor tecnica",
+                sets = listOf(SessionSetResponse(exerciseId = "exercise-1", exerciseName = "Sentadilla", repetitions = 8, loadKg = 40.0)),
+            ),
+        )
+
+        val invalid = draft.updateRepetitions(0, "0")
+
+        assertEquals("session-1", draft.sessionId)
+        assertEquals("40.0", draft.sets.single().loadKg)
+        assertEquals("Registra repeticiones mayores que cero en cada serie", invalid.validationMessage())
+    }
 }

@@ -1,6 +1,7 @@
 package com.gymapp.sessions
 
 import com.gymapp.network.WorkoutPlanResponse
+import com.gymapp.network.WorkoutSessionResponse
 
 fun canFinishSession(saving: Boolean) = !saving
 
@@ -32,6 +33,36 @@ data class SessionDraftState(
             planId = plan.id,
             planName = plan.name,
             sets = plan.days.filter { day == null || it.name == day }.flatMap { currentDay -> currentDay.exercises.flatMap { exercise -> (1..exercise.sets).map { number -> SessionSetDraft(exercise.exerciseId, exercise.name, number, exercise.restSeconds) } } }
+        )
+    }
+}
+
+data class SessionCorrectionDraftState(
+    val sessionId: String,
+    val planName: String,
+    val sets: List<SessionSetDraft>,
+    val perceivedExertion: String = "",
+    val note: String = "",
+) {
+    fun updateRepetitions(index: Int, value: String) = copy(sets = sets.mapIndexed { current, item -> if (current == index) item.copy(repetitions = value) else item })
+    fun updateLoadKg(index: Int, value: String) = copy(sets = sets.mapIndexed { current, item -> if (current == index) item.copy(loadKg = value) else item })
+    fun updatePerceivedExertion(value: String) = copy(perceivedExertion = value)
+    fun updateNote(value: String) = copy(note = value)
+    fun validationMessage(): String? = when {
+        sets.isEmpty() || sets.any { it.repetitions.toIntOrNull()?.let { value -> value <= 0 } != false } -> "Registra repeticiones mayores que cero en cada serie"
+        sets.any { it.loadKg.isNotBlank() && (it.loadKg.toDoubleOrNull()?.let { value -> value < 0 } != false) } -> "Registra una carga en kg valida o dejala vacia"
+        sessionFeedbackError(perceivedExertion) != null -> sessionFeedbackError(perceivedExertion)
+        note.trim().length > 500 -> "La nota no puede superar 500 caracteres"
+        else -> null
+    }
+
+    companion object {
+        fun from(session: WorkoutSessionResponse) = SessionCorrectionDraftState(
+            sessionId = session.id,
+            planName = session.planName,
+            sets = session.sets.mapIndexed { index, set -> SessionSetDraft(set.exerciseId, set.exerciseName, index + 1, repetitions = set.repetitions.toString(), loadKg = set.loadKg?.toString().orEmpty()) },
+            perceivedExertion = session.perceivedExertion?.toString().orEmpty(),
+            note = session.note.orEmpty(),
         )
     }
 }

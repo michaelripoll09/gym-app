@@ -9,10 +9,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -27,12 +33,24 @@ private val historyCard = Color(0xFF1C2022)
 fun SessionHistoryScreen(
     state: SessionHistoryState,
     pending: List<PendingSession>,
+    correction: SessionCorrectionDraftState?,
+    savingCorrection: Boolean,
+    correctionError: String?,
     onSelect: (WorkoutSessionResponse) -> Unit,
+    onEdit: (WorkoutSessionResponse) -> Unit,
+    onRepetitionsChanged: (Int, String) -> Unit,
+    onLoadChanged: (Int, String) -> Unit,
+    onEffortChanged: (String) -> Unit,
+    onNoteChanged: (String) -> Unit,
+    onSaveCorrection: () -> Unit,
+    onCancelCorrection: () -> Unit,
+    onDelete: (WorkoutSessionResponse) -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
     if (state.selected != null) {
-        SessionHistoryDetail(state.selected, onBack)
+        if (correction != null) SessionCorrectionScreen(correction, savingCorrection, correctionError, onRepetitionsChanged, onLoadChanged, onEffortChanged, onNoteChanged, onSaveCorrection, onCancelCorrection)
+        else SessionHistoryDetail(state.selected, savingCorrection, correctionError, onEdit, onDelete, onBack)
         return
     }
 
@@ -64,13 +82,26 @@ fun SessionHistoryScreen(
 }
 
 @Composable
-private fun SessionHistoryDetail(session: WorkoutSessionResponse, onBack: () -> Unit) {
+private fun SessionHistoryDetail(session: WorkoutSessionResponse, saving: Boolean, error: String?, onEdit: (WorkoutSessionResponse) -> Unit, onDelete: (WorkoutSessionResponse) -> Unit, onBack: () -> Unit) {
+    var sessionToDelete by remember(session.id) { mutableStateOf<WorkoutSessionResponse?>(null) }
+    sessionToDelete?.let { deleting ->
+        AlertDialog(
+            onDismissRequest = { sessionToDelete = null },
+            title = { Text("Eliminar sesion") },
+            text = { Text("Esta accion elimina la sesion y actualiza tu progreso. No se puede deshacer.") },
+            confirmButton = { Button(onClick = { sessionToDelete = null; onDelete(deleting) }, enabled = !saving) { Text("Eliminar") } },
+            dismissButton = { Button(onClick = { sessionToDelete = null }) { Text("Cancelar") } },
+        )
+    }
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text(session.planName, color = historyLime, fontSize = 30.sp) }
         item { Text("Fecha de inicio: ${session.startedAt}", color = Color.LightGray) }
         session.perceivedExertion?.let { effort -> item { Text("Esfuerzo percibido: $effort/10", color = historyLime) } }
         session.note?.takeIf { it.isNotBlank() }?.let { note -> item { Text("Nota: $note", color = Color.LightGray) } }
         item { Button(onClick = onBack) { Text("Volver al historial") } }
+        error?.let { message -> item { Text(message, color = Color(0xFFFF8A80)) } }
+        item { Button(onClick = { onEdit(session) }, enabled = !saving) { Text("Corregir sesion") } }
+        item { Button(onClick = { sessionToDelete = session }, enabled = !saving) { Text(if (saving) "Eliminando..." else "Eliminar sesion") } }
         itemsIndexed(session.sets, key = { index, set -> "${set.exerciseName}-$index" }) { _, set ->
             Card(colors = CardDefaults.cardColors(containerColor = historyCard), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -80,5 +111,38 @@ private fun SessionHistoryDetail(session: WorkoutSessionResponse, onBack: () -> 
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SessionCorrectionScreen(
+    state: SessionCorrectionDraftState,
+    saving: Boolean,
+    error: String?,
+    onRepetitionsChanged: (Int, String) -> Unit,
+    onLoadChanged: (Int, String) -> Unit,
+    onEffortChanged: (String) -> Unit,
+    onNoteChanged: (String) -> Unit,
+    onSave: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Text("Corregir sesion · ${state.planName}", color = historyLime, fontSize = 28.sp) }
+        item { Text("Solo se corrigen los valores registrados; la rutina original no cambia.", color = Color.LightGray) }
+        itemsIndexed(state.sets, key = { index, set -> "${set.exerciseId}-$index" }) { index, set ->
+            Card(colors = CardDefaults.cardColors(containerColor = historyCard)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${set.exerciseName} · Serie ${set.setNumber}", color = Color.White)
+                    OutlinedTextField(set.repetitions, { onRepetitionsChanged(index, it) }, label = { Text("Repeticiones realizadas") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                    OutlinedTextField(set.loadKg, { onLoadChanged(index, it) }, label = { Text("Carga (kg, opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving)
+                }
+            }
+        }
+        item { OutlinedTextField(state.perceivedExertion, onEffortChanged, label = { Text("Esfuerzo percibido (1-10)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving) }
+        item { OutlinedTextField(state.note, onNoteChanged, label = { Text("Nota privada (opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !saving) }
+        state.validationMessage()?.let { message -> item { Text(message, color = Color(0xFFFF8A80)) } }
+        error?.let { message -> item { Text(message, color = Color(0xFFFF8A80)) } }
+        item { Button(onClick = onSave, enabled = !saving && state.validationMessage() == null, modifier = Modifier.fillMaxWidth()) { Text(if (saving) "Guardando..." else "Guardar correccion") } }
+        item { Button(onClick = onCancel, enabled = !saving, modifier = Modifier.fillMaxWidth()) { Text("Cancelar") } }
     }
 }
