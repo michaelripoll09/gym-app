@@ -43,6 +43,7 @@ import okhttp3.MediaType.Companion.toMediaType
 @Serializable data class WeeklyTrainingSummaryResponse(val completedSessions: Int, val scheduledSessions: Int, val adherencePercent: Int, val volumeKg: Double, val nextSession: NextWeeklySessionResponse? = null)
 @Serializable data class ExerciseProgressionResponse(val exerciseName: String, val previousRepetitions: Int, val latestRepetitions: Int, val previousLoadKg: Double, val latestLoadKg: Double, val action: String, val explanation: String)
 @Serializable data class PersonalRecordResponse(val exerciseName: String, val maximumLoadKg: Double? = null, val maximumLoadAt: String? = null, val maximumRepetitions: Int, val maximumRepetitionsAt: String)
+@Serializable data class ProgressAnalysisResponse(val periodDays: Int, val completedSessions: Int, val scheduledSessions: Int, val adherencePercent: Int? = null, val weightChangeKg: Double? = null, val activeGoals: Int, val goalsWithCurrentValue: Int, val recentPersonalRecords: Int, val sufficientData: Boolean, val sources: List<String>)
 @Serializable data class BodyMeasurementRequest(val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
 @Serializable data class BodyMeasurementResponse(val id: String, val recordedOn: String, val weightKg: Double, val waistCm: Double? = null, val hipCm: Double? = null, val chestCm: Double? = null)
 @Serializable data class ProgressGoalRequest(val type: String, val targetValue: Double, val targetDate: String? = null, val exerciseName: String? = null)
@@ -77,6 +78,7 @@ interface GymApi {
     @GET("training-calendar") suspend fun trainingCalendar(@Header("Authorization") authorization: String, @Query("month") month: String, @Query("zone") zone: String): List<CalendarDayResponse>
     @GET("training-progress/recommendations") suspend fun progressionRecommendations(@Header("Authorization") authorization: String): List<ExerciseProgressionResponse>
     @GET("training-progress/personal-records") suspend fun personalRecords(@Header("Authorization") authorization: String): List<PersonalRecordResponse>
+    @GET("training-progress/analysis") suspend fun progressAnalysis(@Header("Authorization") authorization: String): ProgressAnalysisResponse
     @GET("body-measurements") suspend fun bodyMeasurements(@Header("Authorization") authorization: String): List<BodyMeasurementResponse>
     @POST("body-measurements") suspend fun createBodyMeasurement(@Header("Authorization") authorization: String, @Body request: BodyMeasurementRequest): BodyMeasurementResponse
     @PUT("body-measurements/{measurementId}") suspend fun updateBodyMeasurement(@Header("Authorization") authorization: String, @Path("measurementId") measurementId: String, @Body request: BodyMeasurementRequest)
