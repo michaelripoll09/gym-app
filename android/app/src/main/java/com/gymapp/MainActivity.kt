@@ -55,6 +55,7 @@ import com.gymapp.guided.discardGuidedRoutine
 import com.gymapp.network.CreateWorkoutPlanRequest
 import com.gymapp.network.CreateWorkoutSessionRequest
 import com.gymapp.network.ProgressMilestoneResponse
+import com.gymapp.network.ExerciseSessionReferenceResponse
 import com.gymapp.network.UpdateWorkoutSessionRequest
 import com.gymapp.network.CuratedPlanResponse
 import com.gymapp.network.GuidedRoutineProposalResponse
@@ -106,6 +107,7 @@ import com.gymapp.sessions.SessionHistoryState
 import com.gymapp.sessions.SessionScreen
 import com.gymapp.sessions.SessionMutationRefreshState
 import com.gymapp.sessions.refreshAfterSessionMutation
+import com.gymapp.sessions.sessionReferencesLoadError
 import com.gymapp.today.TodayTrainingScreen
 import com.gymapp.today.TodayTrainingState
 import com.gymapp.today.plansForToday
@@ -326,6 +328,9 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var sessionSaving by remember { mutableStateOf(false) }
     var sessionError by remember { mutableStateOf<String?>(null) }
     var sessionMilestones by remember { mutableStateOf<List<ProgressMilestoneResponse>?>(null) }
+    var sessionReferences by remember { mutableStateOf<List<ExerciseSessionReferenceResponse>>(emptyList()) }
+    var sessionReferencesLoading by remember { mutableStateOf(false) }
+    var sessionReferencesError by remember { mutableStateOf<String?>(null) }
     val offlineStore = remember { OfflineTrainingStore(context) }
     var pendingSessions by remember { mutableStateOf(offlineStore.pendingSessions()) }
     var pendingSyncing by remember { mutableStateOf(false) }
@@ -376,6 +381,28 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var notificationPermissionGranted by remember { mutableStateOf(Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notificationPermissionGranted = it }
     val scope = rememberCoroutineScope()
+    fun loadSessionReferences(planId: String) {
+        sessionReferences = emptyList()
+        sessionReferencesError = null
+        sessionReferencesLoading = true
+        scope.launch {
+            runCatching { GymApi.create().sessionReferences("Bearer $token", planId) }
+                .onSuccess { sessionReferences = it }
+                .onFailure { failure ->
+                    if (requiresSessionReset((failure as? HttpException)?.code())) onUnauthorized()
+                    else sessionReferencesError = sessionReferencesLoadError()
+                }
+            sessionReferencesLoading = false
+        }
+    }
+    fun startTrainingSession(plan: WorkoutPlanResponse, destination: TrainingScreen, day: String? = null) {
+        session = SessionDraftState.from(plan, day)
+        sessionError = null
+        sessionMilestones = null
+        sessionReturnScreen = destination
+        loadSessionReferences(plan.id)
+        screen = TrainingScreen.SESSION
+    }
     fun refreshSessionDependentScreens() {
         val refreshed = refreshAfterSessionMutation(SessionMutationRefreshState(refreshHistory, refreshProgress, refreshCalendar, refreshWeeklySummary))
         refreshHistory = refreshed.history
@@ -514,7 +541,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             goals = goals,
             goalsLoading = goalsLoading,
             goalsError = goalsError,
-            onStart = { plan -> session = SessionDraftState.from(plan, spanishDayName(LocalDate.now().dayOfWeek)); sessionError = null; sessionMilestones = null; sessionReturnScreen = TrainingScreen.HOME; screen = TrainingScreen.SESSION },
+            onStart = { plan -> startTrainingSession(plan, TrainingScreen.HOME, spanishDayName(LocalDate.now().dayOfWeek)) },
             onShowRoutines = { screen = TrainingScreen.ROUTINES },
             onShowCatalog = { screen = TrainingScreen.CATALOG },
             onShowProgress = { screen = TrainingScreen.PROGRESS },
@@ -585,7 +612,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             }
         }, onBack = { draft = RoutineDraftState(); editingPlanId = null; screen = TrainingScreen.CATALOG })
         TrainingScreen.ROUTINES -> RoutineListScreen(plans, plansLoading, plansError, archivedPlans, pendingArchive, activatingPlanId, plansOffline, pendingSessions.size, onStart = { plan ->
-            session = SessionDraftState.from(plan); sessionError = null; sessionMilestones = null; sessionReturnScreen = TrainingScreen.ROUTINES; screen = TrainingScreen.SESSION
+            startTrainingSession(plan, TrainingScreen.ROUTINES)
         }, onEdit = { plan -> draft = RoutineDraftState.from(plan); editingPlanId = plan.id; screen = TrainingScreen.EDITOR }, onArchive = { pendingArchive = it }, onConfirmArchive = { pendingArchive?.let { plan -> scope.launch { runCatching { GymApi.create().archiveWorkoutPlan("Bearer $token", plan.id) }.onSuccess { pendingArchive = null; refreshPlans++ }.onFailure { plansError = "No pudimos archivar la rutina" } } } }, onCancelArchive = { pendingArchive = null }, onActivate = { plan -> scope.launch { activatingPlanId = plan.id; plansError = null; runCatching { GymApi.create().activateWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { if (requiresSessionReset((it as? HttpException)?.code())) onUnauthorized() else plansError = "No pudimos activar la rutina" }; activatingPlanId = null } }, onRestore = { plan -> scope.launch { runCatching { GymApi.create().restoreWorkoutPlan("Bearer $token", plan.id) }.onSuccess { refreshPlans++ }.onFailure { plansError = "No pudimos restaurar la rutina" } } }, onShowArchived = { archivedPlans = true; refreshPlans++ }, onShowActive = { archivedPlans = false; refreshPlans++ }, onHistory = { screen = TrainingScreen.HISTORY }, onProgress = { screen = TrainingScreen.PROGRESS }, onShowReminders = { screen = TrainingScreen.REMINDERS }, onShowPending = { pendingSyncMessage = null; screen = TrainingScreen.PENDING_SESSIONS }, onBack = { archivedPlans = false; screen = TrainingScreen.CATALOG })
         TrainingScreen.REMINDERS -> ReminderScreen(reminderSettings, notificationPermissionGranted, onSettingsChanged = { settings ->
             ReminderStore(context).saveSettings(settings); reminderSettings = settings; ReminderScheduler.reschedule(context, plans)
@@ -593,7 +620,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
         }, onBack = { screen = TrainingScreen.ROUTINES })
         TrainingScreen.TODAY -> TodayTrainingScreen(today, spanishDayName(LocalDate.now().dayOfWeek), onStart = { plan ->
-            session = SessionDraftState.from(plan, spanishDayName(LocalDate.now().dayOfWeek)); sessionError = null; sessionMilestones = null; sessionReturnScreen = TrainingScreen.TODAY; screen = TrainingScreen.SESSION
+            startTrainingSession(plan, TrainingScreen.TODAY, spanishDayName(LocalDate.now().dayOfWeek))
         }, onShowRoutines = { screen = TrainingScreen.ROUTINES }, onRetry = { refreshToday++ }, onBack = { screen = TrainingScreen.CATALOG })
         TrainingScreen.SESSION -> session?.let { currentSession -> SessionScreen(currentSession, sessionSaving, sessionError, onRepetitionsChanged = { index, value ->
             session = session?.updateRepetitions(index, value)
@@ -624,7 +651,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 }
                 sessionSaving = false
             }
-        }, onBack = { sessionMilestones = null; screen = sessionReturnScreen }, milestones = sessionMilestones, onMilestonesShown = { sessionMilestones = null; screen = sessionReturnScreen }) }
+        }, onBack = { sessionMilestones = null; sessionReferences = emptyList(); sessionReferencesError = null; screen = sessionReturnScreen }, milestones = sessionMilestones, onMilestonesShown = { sessionMilestones = null; screen = sessionReturnScreen }, references = sessionReferences, referencesLoading = sessionReferencesLoading, referencesError = sessionReferencesError, onRetryReferences = { loadSessionReferences(currentSession.planId) }) }
         TrainingScreen.PENDING_SESSIONS -> PendingSessionsScreen(pendingSessions, pendingSyncing, pendingSyncMessage, onSync = { scope.launch {
             pendingSyncing = true; var successful = 0; var failed = 0
             for (pending in pendingSessions.toList()) {

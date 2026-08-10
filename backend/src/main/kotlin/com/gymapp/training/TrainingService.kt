@@ -12,6 +12,10 @@ class SessionNotFoundException : RuntimeException()
 
 @Service
 class TrainingService(private val jdbc: JdbcTemplate) {
+    fun sessionReferences(userId: UUID, planId: UUID): List<ExerciseSessionReferenceResponse> {
+        if (jdbc.queryForObject("select count(*) from workout_plans where id=? and user_id=?", Int::class.java, planId, userId) != 1) throw PlanAccessDeniedException()
+        return jdbc.query("select distinct on (l.exercise_id) l.exercise_id, l.repetitions, l.load_kg, s.started_at from workout_set_logs l join workout_sessions s on s.id=l.session_id where s.user_id=? and l.exercise_id in (select pe.exercise_id from workout_plan_exercises pe join workout_plan_days d on d.id=pe.day_id where d.plan_id=?) order by l.exercise_id, s.started_at desc", { r, _ -> ExerciseSessionReferenceResponse(r.getObject("exercise_id", UUID::class.java), r.getInt("repetitions"), (r.getObject("load_kg") as? Number)?.toDouble(), r.getObject("started_at", OffsetDateTime::class.java).toString()) }, userId, planId)
+    }
     fun listSessions(userId: UUID): List<WorkoutSessionResponse> = jdbc.query("select s.id, s.started_at, p.name, s.perceived_exertion, s.note from workout_sessions s join workout_plans p on p.id=s.plan_id where s.user_id=? order by s.started_at desc", { rows, _ ->
         val sessionId = rows.getObject("id", UUID::class.java)
         WorkoutSessionResponse(sessionId, rows.getString("name"), rows.getObject("started_at").toString(), jdbc.query("select l.exercise_id, e.name, l.repetitions, l.load_kg from workout_set_logs l join exercises e on e.id=l.exercise_id where l.session_id=? order by e.name", { setRows, _ -> SessionSetResponse(setRows.getString("name"), setRows.getInt("repetitions"), (setRows.getObject("load_kg") as? Number)?.toDouble(), setRows.getObject("exercise_id", UUID::class.java)) }, sessionId), (rows.getObject("perceived_exertion") as? Number)?.toInt(), rows.getString("note"))

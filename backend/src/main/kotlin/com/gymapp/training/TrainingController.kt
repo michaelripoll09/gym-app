@@ -23,6 +23,7 @@ data class UpdateWorkoutSessionRequest(val sets: List<SetLogRequest>, val percei
 data class IdResponse(val id: UUID)
 data class ProgressMilestoneResponse(val exerciseName: String, val type: String, val value: Double, val achievedAt: String)
 data class CreateWorkoutSessionResponse(val id: UUID, val milestones: List<ProgressMilestoneResponse>)
+data class ExerciseSessionReferenceResponse(val exerciseId: UUID, val repetitions: Int, val loadKg: Double?, val recordedAt: String)
 data class WorkoutPlanExerciseResponse(val exerciseId: UUID, val name: String, val sets: Int, val minRepetitions: Int, val maxRepetitions: Int, val restSeconds: Int)
 data class WorkoutPlanDayResponse(val name: String, val exercises: List<WorkoutPlanExerciseResponse>)
 data class WorkoutPlanResponse(val id: UUID, val name: String, val days: List<WorkoutPlanDayResponse>, val active: Boolean = false)
@@ -34,6 +35,7 @@ data class WorkoutSessionResponse(val id: UUID, val planName: String, val starte
 class TrainingController(private val service: TrainingService) {
     @GetMapping fun list(@RequestAttribute("authenticatedUserId") userId: UUID) = service.listPlans(userId)
     @GetMapping("/archived") fun archived(@RequestAttribute("authenticatedUserId") userId: UUID) = service.listPlans(userId, true)
+    @GetMapping("/{planId}/session-references") fun references(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID) = service.sessionReferences(userId, planId)
     @PostMapping fun create(@RequestAttribute("authenticatedUserId") userId: UUID, @RequestBody request: CreateWorkoutPlanRequest) = ResponseEntity.status(HttpStatus.CREATED).body(IdResponse(service.createPlan(userId, request)))
     @PutMapping("/{planId}") fun update(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID, @RequestBody request: CreateWorkoutPlanRequest): ResponseEntity<Void> { service.updatePlan(userId, planId, request); return ResponseEntity.noContent().build() }
     @PutMapping("/{planId}/archive") fun archive(@RequestAttribute("authenticatedUserId") userId: UUID, @PathVariable planId: UUID): ResponseEntity<Void> { service.archivePlan(userId, planId, true); return ResponseEntity.noContent().build() }
