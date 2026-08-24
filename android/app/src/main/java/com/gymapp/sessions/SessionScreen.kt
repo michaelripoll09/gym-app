@@ -10,11 +10,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gymapp.network.ProgressMilestoneResponse
 import com.gymapp.network.ExerciseSessionReferenceResponse
+import com.gymapp.network.ExerciseProgressionResponse
 import kotlinx.coroutines.delay
 
 @Composable
@@ -44,6 +47,12 @@ fun SessionScreen(
     referencesError: String? = null,
     onRetryReferences: () -> Unit = {},
     onApplyReference: (String, ExerciseSessionReferenceResponse) -> Unit = { _, _ -> },
+    recommendations: List<ExerciseProgressionResponse> = emptyList(),
+    recommendationsLoading: Boolean = false,
+    recommendationsError: String? = null,
+    onRetryRecommendations: () -> Unit = {},
+    onApplyRecommendation: (String, ExerciseProgressionResponse) -> Unit = { _, _ -> },
+    onUndoRecommendation: (String) -> Unit = {},
 ) {
     if (milestones != null) {
         LaunchedEffect(milestones) { delay(2500); onMilestonesShown() }
@@ -73,7 +82,31 @@ fun SessionScreen(
     var timerConfigured by rememberSaveable { mutableStateOf(0) }
     var timerRemaining by rememberSaveable { mutableStateOf(0) }
     var timerStatus by rememberSaveable { mutableStateOf(RestTimerStatus.IDLE.name) }
+    var recommendationReview by remember { mutableStateOf<SessionRecommendationReview?>(null) }
     LaunchedEffect(timerStatus, timerRemaining) { if (timerStatus == RestTimerStatus.RUNNING.name && timerRemaining > 0) { delay(1000); timerRemaining--; if (timerRemaining == 0) timerStatus = RestTimerStatus.FINISHED.name } }
+    recommendationReview?.let { review ->
+        val preview = review.preview()
+        AlertDialog(
+            onDismissRequest = { recommendationReview = review.cancel() },
+            title = { Text("Aplicar recomendación") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Carga: ${preview.loadKg} kg")
+                    Text("Repeticiones: ${preview.repetitions}")
+                    Text(preview.explanation)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onApplyRecommendation(review.exerciseId, review.recommendation)
+                    recommendationReview = null
+                }) { Text("Aplicar al borrador") }
+            },
+            dismissButton = {
+                Button(onClick = { recommendationReview = review.cancel() }) { Text("Cancelar") }
+            },
+        )
+    }
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("Entrenar · ${state.planName}", color = Color(0xFFB9F227), fontSize = 28.sp) }
         item { Button(onClick = onBack, enabled = !saving) { Text("Cancelar") } }
@@ -82,6 +115,14 @@ fun SessionScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(message, color = Color(0xFFFFB4AB))
                     Button(onClick = onRetryReferences, enabled = !referencesLoading) { Text("Reintentar referencias") }
+                }
+            }
+        } }
+        recommendationsError?.let { message -> item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF3A2424))) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(message, color = Color(0xFFFFB4AB))
+                    Button(onClick = onRetryRecommendations, enabled = !recommendationsLoading) { Text("Reintentar recomendaciones") }
                 }
             }
         } }
@@ -99,8 +140,26 @@ fun SessionScreen(
         itemsIndexed(state.sets, key = { index, set -> "${set.exerciseId}-$index" }) { index, set ->
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1C2022))) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${set.exerciseName} · Serie ${set.setNumber}", color = Color.White)
-                    references.firstOrNull { it.exerciseId == set.exerciseId }?.let { Text("Último registro: ${it.repetitions} reps${it.loadKg?.let { load -> " · $load kg" }.orEmpty()}", color = Color.LightGray) } ?: Text("Aún no hay referencias para este ejercicio.", color = Color.LightGray)
+                    Text("${set.exerciseName} \u00b7 Serie ${set.setNumber}", color = Color.White)
+                    references.firstOrNull { it.exerciseId == set.exerciseId }?.let { Text("Referencia registrada \u00b7 \u00daltimo registro: ${it.repetitions} reps${it.loadKg?.let { load -> " \u00b7 $load kg" }.orEmpty()}", color = Color.LightGray) } ?: Text("A\u00fan no hay referencias para este ejercicio.", color = Color.LightGray)
+                    val recommendation = sessionRecommendationFor(set.exerciseName, recommendations)
+                    if (recommendation != null) {
+                        Text("Recomendaci\u00f3n para la pr\u00f3xima ejecuci\u00f3n: ${when (recommendation.action) { "INCREASE" -> "Aumentar"; "REDUCE" -> "Reducir"; else -> "Mantener" }}", color = Color(0xFFB9F227))
+                        Text("\u00daltimo registro analizado: ${recommendation.latestRepetitions} reps \u00b7 ${recommendation.latestLoadKg} kg", color = Color.LightGray)
+                        Text(recommendation.explanation, color = Color.LightGray)
+                        if (state.sets.indexOfFirst { it.exerciseId == set.exerciseId } == index && state.canApplyRecommendation(set.exerciseId, recommendation)) {
+                            Button(onClick = { recommendationReview = state.reviewRecommendation(set.exerciseId, recommendation) }, enabled = !saving) {
+                                Text("Revisar y aplicar recomendación")
+                            }
+                        }
+                    } else if (!recommendationsLoading && recommendationsError == null) {
+                        Text("No hay recomendaci\u00f3n disponible: falta historial suficiente.", color = Color.LightGray)
+                    }
+                    if (state.sets.indexOfFirst { it.exerciseId == set.exerciseId } == index && state.canUndoRecommendation(set.exerciseId)) {
+                        Button(onClick = { onUndoRecommendation(set.exerciseId) }, enabled = !saving) {
+                            Text("Deshacer recomendación aplicada")
+                        }
+                    }
                     sessionReferenceFor(set.exerciseId, references)?.let { reference ->
                         Text("Registro del ${reference.recordedAt.substringBefore('T')}", color = Color.LightGray)
                         if (state.sets.indexOfFirst { it.exerciseId == set.exerciseId } == index && state.canApplyReference(set.exerciseId, reference)) {

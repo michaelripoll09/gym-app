@@ -106,8 +106,10 @@ import com.gymapp.sessions.SessionHistoryScreen
 import com.gymapp.sessions.SessionHistoryState
 import com.gymapp.sessions.SessionScreen
 import com.gymapp.sessions.SessionMutationRefreshState
+import com.gymapp.sessions.SessionRecommendationState
 import com.gymapp.sessions.refreshAfterSessionMutation
 import com.gymapp.sessions.sessionReferencesLoadError
+import com.gymapp.sessions.sessionRecommendationsLoadError
 import com.gymapp.today.TodayTrainingScreen
 import com.gymapp.today.TodayTrainingState
 import com.gymapp.today.plansForToday
@@ -331,6 +333,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
     var sessionReferences by remember { mutableStateOf<List<ExerciseSessionReferenceResponse>>(emptyList()) }
     var sessionReferencesLoading by remember { mutableStateOf(false) }
     var sessionReferencesError by remember { mutableStateOf<String?>(null) }
+    var sessionRecommendations by remember { mutableStateOf(SessionRecommendationState()) }
     val offlineStore = remember { OfflineTrainingStore(context) }
     var pendingSessions by remember { mutableStateOf(offlineStore.pendingSessions()) }
     var pendingSyncing by remember { mutableStateOf(false) }
@@ -395,12 +398,24 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             sessionReferencesLoading = false
         }
     }
+    fun loadSessionRecommendations() {
+        sessionRecommendations = SessionRecommendationState(loading = true)
+        scope.launch {
+            runCatching { GymApi.create().progressionRecommendations("Bearer $token") }
+                .onSuccess { sessionRecommendations = SessionRecommendationState(items = it) }
+                .onFailure { failure ->
+                    if (requiresSessionReset((failure as? HttpException)?.code())) onUnauthorized()
+                    else sessionRecommendations = SessionRecommendationState(error = sessionRecommendationsLoadError())
+                }
+        }
+    }
     fun startTrainingSession(plan: WorkoutPlanResponse, destination: TrainingScreen, day: String? = null) {
         session = SessionDraftState.from(plan, day)
         sessionError = null
         sessionMilestones = null
         sessionReturnScreen = destination
         loadSessionReferences(plan.id)
+        loadSessionRecommendations()
         screen = TrainingScreen.SESSION
     }
     fun refreshSessionDependentScreens() {
@@ -632,6 +647,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
             session = session?.updateNote(value)
         }, onFinish = {
             if (currentSession.validationMessage() == null) scope.launch {
+                session = session?.clearRecommendationUndos()
                 sessionSaving = true; sessionError = null
                 val request = CreateWorkoutSessionRequest(
                     sets = currentSession.sets.map { SetLogRequest(it.exerciseId, it.repetitions.toInt(), it.loadKg.toDoubleOrNull()) },
@@ -651,7 +667,7 @@ private fun TrainingHome(token: String, profile: String, openToday: Boolean, onT
                 }
                 sessionSaving = false
             }
-        }, onBack = { sessionMilestones = null; sessionReferences = emptyList(); sessionReferencesError = null; screen = sessionReturnScreen }, milestones = sessionMilestones, onMilestonesShown = { sessionMilestones = null; screen = sessionReturnScreen }, references = sessionReferences, referencesLoading = sessionReferencesLoading, referencesError = sessionReferencesError, onRetryReferences = { loadSessionReferences(currentSession.planId) }, onApplyReference = { exerciseId, reference -> session = session?.applyReference(exerciseId, reference) }) }
+        }, onBack = { session = null; sessionMilestones = null; sessionReferences = emptyList(); sessionReferencesError = null; sessionRecommendations = SessionRecommendationState(); screen = sessionReturnScreen }, milestones = sessionMilestones, onMilestonesShown = { session = null; sessionMilestones = null; screen = sessionReturnScreen }, references = sessionReferences, referencesLoading = sessionReferencesLoading, referencesError = sessionReferencesError, onRetryReferences = { loadSessionReferences(currentSession.planId) }, onApplyReference = { exerciseId, reference -> session = session?.applyReference(exerciseId, reference) }, recommendations = sessionRecommendations.items, recommendationsLoading = sessionRecommendations.loading, recommendationsError = sessionRecommendations.error, onRetryRecommendations = { loadSessionRecommendations() }, onApplyRecommendation = { exerciseId, recommendation -> session = session?.applyRecommendation(exerciseId, recommendation) }, onUndoRecommendation = { exerciseId -> session = session?.undoRecommendation(exerciseId) }) }
         TrainingScreen.PENDING_SESSIONS -> PendingSessionsScreen(pendingSessions, pendingSyncing, pendingSyncMessage, onSync = { scope.launch {
             pendingSyncing = true; var successful = 0; var failed = 0
             for (pending in pendingSessions.toList()) {
