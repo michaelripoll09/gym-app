@@ -1,3 +1,6 @@
+import java.security.SecureRandom
+import java.util.Base64
+
 plugins {
     kotlin("jvm") version "2.3.21"
     kotlin("plugin.spring") version "2.3.21"
@@ -44,6 +47,8 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    val jwtSecret = ByteArray(32).also(SecureRandom()::nextBytes)
+    environment("GYM_JWT_SECRET", Base64.getEncoder().encodeToString(jwtSecret))
 }
 
 springBoot {

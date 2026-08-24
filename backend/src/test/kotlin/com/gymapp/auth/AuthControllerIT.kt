@@ -15,10 +15,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.UUID
 
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["gym-app.auth.jwt-secret=Z3ltLWFwcC1kZXZlbG9wbWVudC1rZXktMzItYnl0ZXMtbG9uZw=="],
-)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AuthControllerIT(
     @Autowired private val objectMapper: ObjectMapper,
     @LocalServerPort private val port: Int,

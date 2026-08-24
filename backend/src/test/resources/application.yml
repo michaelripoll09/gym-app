@@ -11,4 +11,4 @@ spring:
 
 gym-app:
   auth:
-    jwt-secret: Z3ltLWFwcC1kZXZlbG9wbWVudC1rZXktMzItYnl0ZXMtbG9uZw==
+    jwt-secret: ${GYM_JWT_SECRET}

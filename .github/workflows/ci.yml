@@ -11,14 +11,13 @@ jobs:
     env:
       GYM_DATABASE_URL: jdbc:postgresql://localhost:5432/gym_app
       GYM_DATABASE_USERNAME: gym_app
-      GYM_DATABASE_PASSWORD: gym_app
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_DB: gym_app
           POSTGRES_USER: gym_app
-          POSTGRES_PASSWORD: gym_app
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
