@@ -12,7 +12,6 @@ jobs:
       GYM_DATABASE_URL: jdbc:postgresql://localhost:5432/gym_app
       GYM_DATABASE_USERNAME: gym_app
       GYM_DATABASE_PASSWORD: gym_app
-      GYM_JWT_SECRET: Z3ltLWFwcC1kZXZlbG9wbWVudC1rZXktMzItYnl0ZXMtbG9uZw==
     services:
       postgres:
         image: postgres:16-alpine
